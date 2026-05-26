@@ -52,3 +52,20 @@ c = 63241 AU/yr
 ```
 
 The plotted body diameters are visually compressed. They preserve the ordering of physical radii, but they are not drawn on the same linear scale as the orbital distances.
+
+
+## Live playback
+
+This version includes a visible `Start`, `Pause`, and `Reset` panel above the figure.
+Live playback is implemented with `streamlit-autorefresh`, which periodically reruns the app and advances the displayed frame.
+
+If the deployed app does not run automatically, check that `streamlit-autorefresh` is present in `requirements.txt` and redeploy/reboot the app.
+
+## Finding the public URL
+
+After deployment on Streamlit Community Cloud, open the app and use the `Share` button in the upper-right corner.
+The public app address has the form:
+
+```text
+https://your-custom-subdomain.streamlit.app
+```
