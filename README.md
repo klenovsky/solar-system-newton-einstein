@@ -40,3 +40,8 @@ The model is educational.  It is not a date-specific JPL ephemeris and it is not
 ## Animation fix
 
 If an older deployed version showed static planets when pressing Play, replace `app.py` with this version. The previous version used `redraw=False`, which is unreliable for `Scatter3d` WebGL traces in some browsers/Streamlit deployments. This version uses `redraw=True` and fully specifies the animated marker traces in each Plotly frame.
+
+
+## Reset button
+
+The sidebar contains **Reset to initial values**, which restores the default model, display settings, masses, distances, speed of light, and 1PN multiplier.

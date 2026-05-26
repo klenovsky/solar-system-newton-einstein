@@ -3,7 +3,7 @@
 """
 Fast Streamlit web app: Solar-System Newton gravity vs pairwise 1PN approximation.
 
-Fixed animation version: Plotly 3D frames use redraw=True and fully specify
+Reset-enabled fixed animation version: Plotly 3D frames use redraw=True and fully specify
 the animated marker traces, which is required for reliable Scatter3d playback
 in browsers and Streamlit.
 
@@ -489,10 +489,53 @@ def make_fast_figure(
 
 
 # =============================================================================
+# Streamlit session-state defaults
+# =============================================================================
+
+DEFAULT_UI_VALUES: dict[str, object] = {
+    "view": "To Jupiter",
+    "total_years": 12.0,
+    "dt_days": 2.0,
+    "stored_stride": 1,
+    "show_orbit_lines": True,
+    "orbit_max_points": 1800,
+    "max_animation_frames": 450,
+    "frame_duration_ms": 35,
+    "log10_c": math.log10(C_REAL_AU_PER_YR),
+    "pn_log10": 0.0,
+    "size_gamma": 0.25,
+    "sun_marker": 5.0,
+    "planet_min": 8.0,
+    "planet_max": 15.0,
+    "line_width": 2.0,
+    "marker_opacity": 0.95,
+    "show_labels": True,
+    "sun_mass_log10": 0.0,
+}
+for _name in PLANET_NAMES:
+    DEFAULT_UI_VALUES[f"mass_{_name}"] = 0.0
+    DEFAULT_UI_VALUES[f"dist_{_name}"] = 1.0
+
+
+def initialize_default_state() -> None:
+    """Fill missing Streamlit widget keys with default values."""
+    for key, value in DEFAULT_UI_VALUES.items():
+        st.session_state.setdefault(key, value)
+
+
+def reset_to_initial_values() -> None:
+    """Reset all controls to their initial didactic values."""
+    for key, value in DEFAULT_UI_VALUES.items():
+        st.session_state[key] = value
+
+
+# =============================================================================
 # Streamlit UI
 # =============================================================================
 
 st.set_page_config(page_title="Solar System: Newton vs 1PN", layout="wide")
+initialize_default_state()
+
 st.title("Solar-System motion: Newton gravity vs. Einstein GTR 1PN approximation")
 
 with st.expander("Model description", expanded=False):
@@ -512,46 +555,50 @@ than repeatedly rerunning Streamlit for every animation frame.
     st.latex(r"\ddot{\mathbf r}_i=-\sum_{j\ne i}Gm_j\frac{\mathbf r_i-\mathbf r_j}{(|\mathbf r_i-\mathbf r_j|^2+\epsilon^2)^{3/2}}")
     st.latex(r"\mathbf a_i=\mathbf a_i^{\rm Newton}+\lambda_{\rm 1PN}\sum_{j\ne i}\mathbf a_{ij}^{\rm pairwise\;1PN}")
 
+st.sidebar.header("Presets")
+st.sidebar.button("Reset to initial values", on_click=reset_to_initial_values, use_container_width=True)
+st.sidebar.caption("Restores the default Solar-System model, display settings, masses, distances, c and 1PN multiplier.")
+
 st.sidebar.header("Main controls")
-view = st.sidebar.selectbox("Displayed region", ("Inner planets", "To Jupiter", "All planets"), index=1)
-total_years = st.sidebar.slider("Simulated time [yr]", 0.5, 250.0, 12.0, 0.5)
-dt_days = st.sidebar.slider("RK4 time step [days]", 0.25, 20.0, 2.0, 0.25)
-stored_stride = st.sidebar.slider("Stored trajectory stride [RK4 steps]", 1, 20, 1, 1)
+view = st.sidebar.selectbox("Displayed region", ("Inner planets", "To Jupiter", "All planets"), key="view")
+total_years = st.sidebar.slider("Simulated time [yr]", 0.5, 250.0, key="total_years", step=0.5)
+dt_days = st.sidebar.slider("RK4 time step [days]", 0.25, 20.0, key="dt_days", step=0.25)
+stored_stride = st.sidebar.slider("Stored trajectory stride [RK4 steps]", 1, 20, key="stored_stride", step=1)
 
 st.sidebar.header("Animation performance")
-show_orbit_lines = st.sidebar.checkbox("Show smooth orbit curves", value=True)
-orbit_max_points = st.sidebar.slider("Max points per orbit curve", 200, 5000, 1800, 100)
-max_animation_frames = st.sidebar.slider("Max browser animation frames", 30, 1200, 450, 30)
-frame_duration_ms = st.sidebar.slider("Animation frame duration [ms]", 10, 200, 35, 5)
+show_orbit_lines = st.sidebar.checkbox("Show smooth orbit curves", key="show_orbit_lines")
+orbit_max_points = st.sidebar.slider("Max points per orbit curve", 200, 5000, key="orbit_max_points", step=100)
+max_animation_frames = st.sidebar.slider("Max browser animation frames", 30, 1200, key="max_animation_frames", step=30)
+frame_duration_ms = st.sidebar.slider("Animation frame duration [ms]", 10, 200, key="frame_duration_ms", step=5)
 st.sidebar.caption("Fastest setting: fewer animation frames and fewer orbit-curve points. Smoothest orbit curves: more orbit-curve points.")
 
 st.sidebar.header("1PN parameters")
-log10_c = st.sidebar.slider("log10(c [AU/yr])", 1.0, 6.0, math.log10(C_REAL_AU_PER_YR), 0.05)
+log10_c = st.sidebar.slider("log10(c [AU/yr])", 1.0, 6.0, key="log10_c", step=0.05)
 c_value = 10.0 ** log10_c
-pn_log10 = st.sidebar.slider("log10(1PN multiplier)", -3.0, 6.0, 0.0, 0.1)
+pn_log10 = st.sidebar.slider("log10(1PN multiplier)", -3.0, 6.0, key="pn_log10", step=0.1)
 st.sidebar.caption(f"c = {c_value:,.1f} AU/yr; physical c ≈ {C_REAL_AU_PER_YR:,.1f} AU/yr")
 st.sidebar.caption(f"1PN multiplier = {10.0 ** pn_log10:.3g}")
 
 st.sidebar.header("Display sizes")
-size_gamma = st.sidebar.slider("Planet size compression gamma", 0.05, 0.80, 0.25, 0.05)
-sun_marker = st.sidebar.slider("Sun marker diameter [px]", 1.0, 18.0, 5.0, 0.5)
-planet_min = st.sidebar.slider("Minimum planet diameter [px]", 2.0, 16.0, 8.0, 0.5)
-planet_max = st.sidebar.slider("Largest planet diameter [px]", 4.0, 30.0, 15.0, 0.5)
-line_width = st.sidebar.slider("Orbit line width [px]", 1.0, 6.0, 2.0, 0.5)
-marker_opacity = st.sidebar.slider("Body marker opacity", 0.30, 1.00, 0.95, 0.05)
-show_labels = st.sidebar.checkbox("Show body labels", value=True)
+size_gamma = st.sidebar.slider("Planet size compression gamma", 0.05, 0.80, key="size_gamma", step=0.05)
+sun_marker = st.sidebar.slider("Sun marker diameter [px]", 1.0, 18.0, key="sun_marker", step=0.5)
+planet_min = st.sidebar.slider("Minimum planet diameter [px]", 2.0, 16.0, key="planet_min", step=0.5)
+planet_max = st.sidebar.slider("Largest planet diameter [px]", 4.0, 30.0, key="planet_max", step=0.5)
+line_width = st.sidebar.slider("Orbit line width [px]", 1.0, 6.0, key="line_width", step=0.5)
+marker_opacity = st.sidebar.slider("Body marker opacity", 0.30, 1.00, key="marker_opacity", step=0.05)
+show_labels = st.sidebar.checkbox("Show body labels", key="show_labels")
 
 st.sidebar.header("Mass scaling")
-sun_mass_log10 = st.sidebar.slider("Sun: log10(M/M_real)", -3.0, 3.0, 0.0, 0.1)
+sun_mass_log10 = st.sidebar.slider("Sun: log10(M/M_real)", -3.0, 3.0, key="sun_mass_log10", step=0.1)
 planet_mass_log10: list[float] = []
 with st.sidebar.expander("Individual planet masses", expanded=False):
     for name in PLANET_NAMES:
-        planet_mass_log10.append(st.slider(f"{name}: log10(M/M_real)", -3.0, 6.0, 0.0, 0.1, key=f"mass_{name}"))
+        planet_mass_log10.append(st.slider(f"{name}: log10(M/M_real)", -3.0, 6.0, key=f"mass_{name}", step=0.1))
 
 planet_distance_scale: list[float] = []
 with st.sidebar.expander("Individual planet distances", expanded=False):
     for name in PLANET_NAMES:
-        planet_distance_scale.append(st.slider(f"{name}: a/a_real", 0.10, 5.00, 1.00, 0.05, key=f"dist_{name}"))
+        planet_distance_scale.append(st.slider(f"{name}: a/a_real", 0.10, 5.00, key=f"dist_{name}", step=0.05))
 
 # Safety limits to avoid generating unreasonably large figures on Streamlit Cloud.
 n_steps = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR)))
