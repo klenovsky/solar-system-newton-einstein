@@ -33,6 +33,14 @@ import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
+try:
+    from streamlit_autorefresh import st_autorefresh
+    HAS_AUTOREFRESH = True
+except Exception:
+    # The app still works in manual-frame mode if the optional package is absent.
+    HAS_AUTOREFRESH = False
+
+
 
 # =============================================================================
 # Physical constants and default body data
@@ -531,12 +539,20 @@ with st.sidebar.expander("Individual planet distances", expanded=False):
     for name in PLANET_NAMES:
         planet_distance_scale.append(st.slider(f"{name}: a/a_real", 0.10, 5.00, 1.00, 0.05, key=f"dist_{name}"))
 
-st.sidebar.header("Animation")
+st.sidebar.header("Playback")
 frame_estimate = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR) / max(frame_stride, 1))) + 1
 n_step_estimate = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR)))
 st.sidebar.caption(f"Internal RK4 steps: {n_step_estimate:,}; displayed frames: about {frame_estimate:,}")
-use_animation = st.sidebar.checkbox("Create Plotly Play animation", value=False)
-max_animation_frames = st.sidebar.slider("Max animation frames", 20, 250, 120, 10)
+
+# Two playback modes are provided:
+# 1. Streamlit live playback: Start/Pause buttons advance the displayed frame by
+#    rerunning the app on a timer. This is the most visible option for web use.
+# 2. Plotly animation: a Play button is embedded directly inside the Plotly chart.
+live_interval_ms = st.sidebar.slider("Live playback refresh [ms]", 100, 2000, 250, 50)
+frames_per_refresh = st.sidebar.slider("Frames advanced per refresh", 1, 20, 2, 1)
+loop_playback = st.sidebar.checkbox("Loop live playback", value=True)
+use_animation = st.sidebar.checkbox("Also create Plotly chart Play button", value=True)
+max_animation_frames = st.sidebar.slider("Max Plotly animation frames", 20, 250, 120, 10)
 
 if n_step_estimate > 20_000:
     st.error(
@@ -558,7 +574,69 @@ with st.spinner("Integrating Newton and 1PN trajectories..."):
     )
 
 visible_indices = visible_body_indices(view)
-current_frame = st.slider("Displayed time frame", 0, len(times) - 1, min(len(times) - 1, len(times) // 2))
+
+# Reset live playback whenever a physical or display parameter is changed.
+parameter_signature = repr((
+    view, total_years, dt_days, frame_stride, trail_frames,
+    log10_c, pn_log10, size_gamma, sun_marker, planet_min, planet_max,
+    sun_mass_log10, tuple(planet_mass_log10), tuple(planet_distance_scale),
+))
+if st.session_state.get("last_parameter_signature") != parameter_signature:
+    st.session_state.last_parameter_signature = parameter_signature
+    st.session_state.live_frame = 0
+    st.session_state.running = False
+
+st.subheader("Live playback")
+if "live_frame" not in st.session_state:
+    st.session_state.live_frame = 0
+if "running" not in st.session_state:
+    st.session_state.running = False
+
+st.session_state.live_frame = int(np.clip(st.session_state.live_frame, 0, len(times) - 1))
+
+pb1, pb2, pb3, pb4 = st.columns([1, 1, 1, 3])
+with pb1:
+    if st.button("▶ Start", use_container_width=True):
+        st.session_state.running = True
+with pb2:
+    if st.button("⏸ Pause", use_container_width=True):
+        st.session_state.running = False
+with pb3:
+    if st.button("↺ Reset", use_container_width=True):
+        st.session_state.live_frame = 0
+        st.session_state.running = False
+with pb4:
+    st.write(
+        f"Status: {'running' if st.session_state.running else 'paused'}; "
+        f"frame {st.session_state.live_frame + 1}/{len(times)}; "
+        f"t = {times[st.session_state.live_frame]:.2f} yr"
+    )
+
+if st.session_state.running:
+    if HAS_AUTOREFRESH:
+        st_autorefresh(interval=int(live_interval_ms), key="solar_live_autorefresh")
+        next_frame = st.session_state.live_frame + int(frames_per_refresh)
+        if next_frame >= len(times):
+            if loop_playback:
+                next_frame = next_frame % len(times)
+            else:
+                next_frame = len(times) - 1
+                st.session_state.running = False
+        st.session_state.live_frame = int(next_frame)
+    else:
+        st.warning(
+            "Live playback requires the optional package streamlit-autorefresh. "
+            "Install it or use the Plotly Play button in the chart."
+        )
+else:
+    st.session_state.live_frame = st.slider(
+        "Displayed time frame",
+        0,
+        len(times) - 1,
+        int(st.session_state.live_frame),
+    )
+
+current_frame = int(st.session_state.live_frame)
 
 sizes = marker_sizes(visible_indices, size_gamma, sun_marker, planet_min, planet_max)
 fig = make_figure(
