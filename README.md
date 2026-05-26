@@ -1,12 +1,24 @@
-# Solar-System Newton vs. 1PN Streamlit app
+# Solar-System motion: Newton gravity vs. Einstein GTR 1PN approximation
 
-This is a Streamlit web application that visualizes a simplified Solar-System model in 3D.
+This Streamlit app visualizes a simplified Solar-System model in two parallel panels:
 
-The left panel integrates Newtonian N-body gravity. The right panel integrates Newtonian gravity plus a pairwise two-body first post-Newtonian (1PN) correction inspired by general relativity.
+- **Newton gravity**
+- **Einstein GTR 1PN approximation**
 
-The model is educational. It is not a full Einstein-Infeld-Hoffmann N-body ephemeris and not a JPL Horizons replacement.
+The 1PN panel uses a pairwise two-body first post-Newtonian correction. It is a didactic weak-field visualization, not a full Einstein-Infeld-Hoffmann ephemeris and not a JPL Horizons replacement.
 
-## Files
+## Run locally
+
+```bash
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+streamlit run app.py
+```
+
+## Deploy on Streamlit Community Cloud
+
+Put these files in the root of a GitHub repository:
 
 ```text
 app.py
@@ -14,58 +26,28 @@ requirements.txt
 README.md
 ```
 
-## Local run
+Then create a new app in Streamlit Community Cloud and select `app.py` as the main file.
 
-Create and activate a Python environment, then install dependencies:
+## Smoothness and playback speed
 
-```bash
-pip install -r requirements.txt
-```
+The app separates three controls:
 
-Run the application:
+1. **RK4 time step [days]**: numerical integration step.
+2. **Stored trajectory stride [RK4 steps]**: how many RK4 steps are skipped between plotted points.
+3. **Stored frames advanced per refresh**: apparent browser playback speed.
 
-```bash
-streamlit run app.py
-```
-
-## Deploy on Streamlit Community Cloud
-
-1. Create a GitHub repository.
-2. Upload `app.py`, `requirements.txt`, and `README.md` to the repository root.
-3. Go to Streamlit Community Cloud.
-4. Click `Create app`.
-5. Select the repository, branch, and entrypoint file `app.py`.
-6. Deploy.
-
-## Notes
-
-The app uses units AU, Julian year, and solar mass. In these units
+For smooth zoomed-in orbits use:
 
 ```text
-G = 4*pi^2 AU^3 / (M_sun yr^2)
+RK4 time step [days] = 0.5 to 1.0
+Stored trajectory stride = 1
+High-quality trails = enabled
 ```
 
-The physical speed of light is approximately
+For faster apparent playback increase:
 
 ```text
-c = 63241 AU/yr
+Stored frames advanced per refresh
 ```
 
-The plotted body diameters are visually compressed. They preserve the ordering of physical radii, but they are not drawn on the same linear scale as the orbital distances.
-
-
-## Live playback
-
-This version includes a visible `Start`, `Pause`, and `Reset` panel above the figure.
-Live playback is implemented with `streamlit-autorefresh`, which periodically reruns the app and advances the displayed frame.
-
-If the deployed app does not run automatically, check that `streamlit-autorefresh` is present in `requirements.txt` and redeploy/reboot the app.
-
-## Finding the public URL
-
-After deployment on Streamlit Community Cloud, open the app and use the `Share` button in the upper-right corner.
-The public app address has the form:
-
-```text
-https://your-custom-subdomain.streamlit.app
-```
+This changes display speed only; it does not change the numerical model.

@@ -6,10 +6,6 @@ Streamlit web application: Newtonian vs. pairwise 1PN Solar-System model.
 Run locally:
     streamlit run app.py
 
-Deploy:
-    Put app.py and requirements.txt into a GitHub repository and deploy the
-    repository on Streamlit Community Cloud.
-
 Model summary
 -------------
 Units:
@@ -20,6 +16,11 @@ Newtonian gravity plus a pairwise two-body first post-Newtonian (1PN) correction
 The 1PN part is intended for visualization of weak relativistic corrections. It
 is not a full Einstein-Infeld-Hoffmann many-body ephemeris and it is not a JPL
 Horizons replacement.
+
+This version separates three things that should not be confused:
+    1. RK4 time step: numerical accuracy of the integration.
+    2. Stored trajectory stride: smoothness of plotted trails.
+    3. Live frames per refresh: apparent playback speed in the browser.
 """
 
 from __future__ import annotations
@@ -37,9 +38,7 @@ try:
     from streamlit_autorefresh import st_autorefresh
     HAS_AUTOREFRESH = True
 except Exception:
-    # The app still works in manual-frame mode if the optional package is absent.
     HAS_AUTOREFRESH = False
-
 
 
 # =============================================================================
@@ -81,7 +80,6 @@ BODIES: tuple[BodyData, ...] = (
 )
 
 PLANET_NAMES = tuple(body.name for body in BODIES[1:])
-BODY_NAMES = tuple(body.name for body in BODIES)
 PLANET_MAX_RADIUS_KM = max(body.radius_km for body in BODIES[1:])
 
 
@@ -109,13 +107,7 @@ def build_initial_conditions(
     planet_mass_log10: Sequence[float],
     planet_distance_scale: Sequence[float],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Create simplified initial conditions for Sun + eight planets.
-
-    Planet positions start on tilted circular orbits with radii equal to
-    semi_major_axis * distance_scale.  Velocities are circular Keplerian speeds
-    for the scaled Sun mass and scaled planet mass.  This gives a clean didactic
-    model, not a high-precision ephemeris for a specific date.
-    """
+    """Create simplified initial conditions for Sun + eight planets."""
     n = len(BODIES)
     masses = np.zeros(n, dtype=float)
     pos = np.zeros((n, 3), dtype=float)
@@ -133,7 +125,6 @@ def build_initial_conditions(
         phase = math.radians(body.phase_deg)
         inc = math.radians(body.inclination_deg)
 
-        # Circular orbit in the local orbital plane.
         local_pos = np.array((r * math.cos(phase), r * math.sin(phase), 0.0), dtype=float)
         speed = math.sqrt(G_MODEL * (masses[0] + masses[i]) / r)
         local_vel = np.array((-speed * math.sin(phase), speed * math.cos(phase), 0.0), dtype=float)
@@ -142,8 +133,7 @@ def build_initial_conditions(
         pos[i] = rot @ local_pos
         vel[i] = rot @ local_vel
 
-    pos, vel = barycentric_transform(pos, vel, masses)
-    return pos, vel, masses
+    return barycentric_transform(pos, vel, masses) + (masses,)
 
 
 def acceleration_newton(pos: np.ndarray, masses: np.ndarray) -> np.ndarray:
@@ -168,16 +158,7 @@ def acceleration_pairwise_1pn(
     c_au_per_year: float,
     pn_multiplier: float,
 ) -> np.ndarray:
-    """Newtonian N-body acceleration plus pairwise two-body 1PN corrections.
-
-    For each pair i,j the standard relative two-body 1PN correction is computed
-    in harmonic-coordinate form and split between the two bodies so that the
-    pair center-of-mass acceleration remains zero.
-
-    This is useful pedagogically, especially for a Sun-dominated system, but it
-    is not the full Einstein-Infeld-Hoffmann N-body equation because the genuine
-    1PN three-body terms are not included.
-    """
+    """Newtonian N-body acceleration plus pairwise two-body 1PN corrections."""
     acc = acceleration_newton(pos, masses)
     if pn_multiplier == 0.0:
         return acc
@@ -211,8 +192,8 @@ def acceleration_pairwise_1pn(
             a_rel_corr = (G_MODEL * mtot / (c2 * r2)) * bracket
             a_rel_corr *= pn_multiplier
 
-            # Split the relative correction a_i - a_j while keeping
-            # mi*a_i_corr + mj*a_j_corr = 0.
+            # Split the relative correction a_i - a_j while keeping the pair
+            # center-of-mass acceleration zero.
             acc[i] += (mj / mtot) * a_rel_corr
             acc[j] += -(mi / mtot) * a_rel_corr
 
@@ -264,14 +245,19 @@ def diagnostics(pos: np.ndarray, vel: np.ndarray, masses: np.ndarray, c_value: f
 def simulate_cached(
     total_years: float,
     dt_days: float,
-    frame_stride: int,
+    store_stride: int,
     sun_mass_log10: float,
     planet_mass_log10: tuple[float, ...],
     planet_distance_scale: tuple[float, ...],
     c_value: float,
     pn_log10: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, float], dict[str, float]]:
-    """Integrate Newton and 1PN models and return downsampled frames."""
+    """Integrate Newton and 1PN models and return stored frames.
+
+    store_stride controls how often integration points are stored for plotting.
+    For visually smooth zoomed-in trajectories use store_stride = 1 and a small
+    RK4 step, for example dt_days = 0.5--1.0 day.
+    """
     pos0, vel0, masses = build_initial_conditions(sun_mass_log10, planet_mass_log10, planet_distance_scale)
     n = len(masses)
     state_n = np.concatenate((pos0.reshape(-1), vel0.reshape(-1)))
@@ -279,7 +265,7 @@ def simulate_cached(
 
     dt = float(dt_days) / DAYS_PER_YEAR
     n_steps = int(math.ceil(float(total_years) / dt))
-    frame_stride = max(int(frame_stride), 1)
+    store_stride = max(int(store_stride), 1)
     pn_multiplier = 10.0 ** float(pn_log10)
 
     times = []
@@ -295,19 +281,12 @@ def simulate_cached(
     for step in range(1, n_steps + 1):
         state_n = rk4_step(state_n, dt, masses, "newton", c_value, pn_multiplier)
         state_p = rk4_step(state_p, dt, masses, "1pn", c_value, pn_multiplier)
-        if step % frame_stride == 0 or step == n_steps:
+        if step % store_stride == 0 or step == n_steps:
             store(step)
 
     diag_n = diagnostics(frames_n[-1], state_n[3 * n :].reshape((n, 3)), masses, c_value)
     diag_p = diagnostics(frames_p[-1], state_p[3 * n :].reshape((n, 3)), masses, c_value)
-    return (
-        np.asarray(times),
-        np.asarray(frames_n),
-        np.asarray(frames_p),
-        masses,
-        diag_n,
-        diag_p,
-    )
+    return np.asarray(times), np.asarray(frames_n), np.asarray(frames_p), masses, diag_n, diag_p
 
 
 # =============================================================================
@@ -316,9 +295,9 @@ def simulate_cached(
 
 def visible_body_indices(view: str) -> list[int]:
     if view == "Inner planets":
-        return list(range(0, 5))       # Sun through Mars
+        return list(range(0, 5))
     if view == "To Jupiter":
-        return list(range(0, 6))       # Sun through Jupiter
+        return list(range(0, 6))
     return list(range(0, len(BODIES)))
 
 
@@ -349,8 +328,11 @@ def axis_range_for(frames_a: np.ndarray, frames_b: np.ndarray, indices: Sequence
     return -margin, margin
 
 
-def trail_slice(frame: int, trail_frames: int) -> slice:
-    start = max(0, frame - max(int(trail_frames), 1) + 1)
+def trail_slice_by_time(times: np.ndarray, frame: int, trail_years: float) -> slice:
+    frame = int(np.clip(frame, 0, len(times) - 1))
+    t_now = float(times[frame])
+    t_min = max(0.0, t_now - max(float(trail_years), 0.0))
+    start = int(np.searchsorted(times, t_min, side="left"))
     return slice(start, frame + 1)
 
 
@@ -360,12 +342,18 @@ def make_figure(
     frames_p: np.ndarray,
     frame_index: int,
     visible_indices: Sequence[int],
-    trail_frames: int,
+    trail_years: float,
+    trail_point_stride: int,
     sizes: Sequence[float],
-    animate: bool,
-    max_animation_frames: int,
+    show_labels: bool,
+    line_width: float,
 ) -> go.Figure:
-    """Build static or animated Plotly figure."""
+    """Build a lean Plotly figure for live Streamlit playback.
+
+    This intentionally does not create Plotly animation frames by default.  The
+    Streamlit autorefresh loop advances the selected frame and redraws only the
+    current trails, which is usually faster and more reliable on Community Cloud.
+    """
     fig = make_subplots(
         rows=1,
         cols=2,
@@ -376,17 +364,21 @@ def make_figure(
 
     colors = [BODIES[i].color for i in visible_indices]
     names = [BODIES[i].name for i in visible_indices]
+    marker_mode = "markers+text" if show_labels else "markers"
 
     def add_model_traces(frames: np.ndarray, scene_col: int, model_prefix: str, initial_frame: int) -> None:
-        sl = trail_slice(initial_frame, trail_frames)
+        sl = trail_slice_by_time(times, initial_frame, trail_years)
+        stride = max(int(trail_point_stride), 1)
         for idx in visible_indices:
             body = BODIES[idx]
-            xyz = frames[sl, idx, :]
+            xyz = frames[sl, idx, :][::stride]
+            if xyz.shape[0] == 0:
+                xyz = frames[initial_frame:initial_frame + 1, idx, :]
             fig.add_trace(
                 go.Scatter3d(
                     x=xyz[:, 0], y=xyz[:, 1], z=xyz[:, 2],
                     mode="lines",
-                    line=dict(width=2, color=body.color),
+                    line=dict(width=float(line_width), color=body.color),
                     name=f"{model_prefix} {body.name} trail",
                     showlegend=False,
                     hoverinfo="skip",
@@ -397,12 +389,12 @@ def make_figure(
         fig.add_trace(
             go.Scatter3d(
                 x=pts[:, 0], y=pts[:, 1], z=pts[:, 2],
-                mode="markers+text",
-                marker=dict(size=list(sizes), color=colors, opacity=0.95, sizemode="diameter"),
-                text=names,
+                mode=marker_mode,
+                marker=dict(size=list(sizes), color=colors, opacity=0.98, sizemode="diameter"),
+                text=names if show_labels else None,
                 textposition="top center",
                 name=f"{model_prefix} bodies",
-                hovertemplate="%{text}<br>x=%{x:.3f} AU<br>y=%{y:.3f} AU<br>z=%{z:.3f} AU<extra></extra>",
+                hovertemplate="%{text}<br>x=%{x:.4f} AU<br>y=%{y:.4f} AU<br>z=%{z:.4f} AU<extra></extra>" if show_labels else "x=%{x:.4f} AU<br>y=%{y:.4f} AU<br>z=%{z:.4f} AU<extra></extra>",
                 showlegend=False,
             ),
             row=1, col=scene_col,
@@ -414,75 +406,20 @@ def make_figure(
 
     axis_min, axis_max = axis_range_for(frames_n, frames_p, visible_indices)
     axis_template = dict(
-        xaxis=dict(title="x [AU]", range=[axis_min, axis_max]),
-        yaxis=dict(title="y [AU]", range=[axis_min, axis_max]),
-        zaxis=dict(title="z [AU]", range=[axis_min, axis_max]),
+        xaxis=dict(title="x [AU]", range=[axis_min, axis_max], showspikes=False),
+        yaxis=dict(title="y [AU]", range=[axis_min, axis_max], showspikes=False),
+        zaxis=dict(title="z [AU]", range=[axis_min, axis_max], showspikes=False),
         aspectmode="cube",
+        camera=dict(eye=dict(x=1.35, y=1.35, z=0.85)),
     )
     fig.update_layout(
         scene=axis_template,
         scene2=axis_template,
-        height=760,
+        height=740,
         margin=dict(l=5, r=5, t=70, b=5),
         title=f"Solar-System model: t = {times[frame_index]:.2f} yr",
+        uirevision="keep_zoom_during_live_playback",
     )
-
-    if animate:
-        n_total_frames = len(times)
-        if n_total_frames <= max_animation_frames:
-            selected_animation_frames = list(range(n_total_frames))
-        else:
-            selected_animation_frames = np.linspace(0, n_total_frames - 1, max_animation_frames).astype(int).tolist()
-            selected_animation_frames = sorted(set(selected_animation_frames))
-
-        trace_count_per_model = len(visible_indices) + 1
-        total_trace_count = 2 * trace_count_per_model
-        animation_frames = []
-        for fidx in selected_animation_frames:
-            frame_data = []
-            for frames in (frames_n, frames_p):
-                sl = trail_slice(fidx, trail_frames)
-                for idx in visible_indices:
-                    xyz = frames[sl, idx, :]
-                    frame_data.append(go.Scatter3d(x=xyz[:, 0], y=xyz[:, 1], z=xyz[:, 2]))
-                pts = frames[fidx, visible_indices, :]
-                frame_data.append(go.Scatter3d(x=pts[:, 0], y=pts[:, 1], z=pts[:, 2], text=names))
-            animation_frames.append(go.Frame(data=frame_data, traces=list(range(total_trace_count)), name=str(fidx)))
-
-        fig.frames = animation_frames
-        fig.update_layout(
-            updatemenus=[
-                dict(
-                    type="buttons",
-                    showactive=False,
-                    x=0.02,
-                    y=1.08,
-                    xanchor="left",
-                    yanchor="top",
-                    buttons=[
-                        dict(label="Play", method="animate", args=[None, {"frame": {"duration": 70, "redraw": True}, "fromcurrent": True}]),
-                        dict(label="Pause", method="animate", args=[[None], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate"}]),
-                    ],
-                )
-            ],
-            sliders=[
-                dict(
-                    active=0,
-                    x=0.1,
-                    y=0.01,
-                    len=0.8,
-                    steps=[
-                        dict(
-                            method="animate",
-                            label=f"{times[fidx]:.1f}",
-                            args=[[str(fidx)], {"frame": {"duration": 0, "redraw": True}, "mode": "immediate"}],
-                        )
-                        for fidx in selected_animation_frames
-                    ],
-                )
-            ],
-        )
-
     return fig
 
 
@@ -509,10 +446,15 @@ replacement.
 
 st.sidebar.header("Global controls")
 view = st.sidebar.selectbox("Displayed region", ("Inner planets", "To Jupiter", "All planets"), index=1)
-total_years = st.sidebar.slider("Simulated time [yr]", min_value=1.0, max_value=250.0, value=12.0, step=1.0)
-dt_days = st.sidebar.slider("RK4 time step [days]", min_value=1.0, max_value=30.0, value=5.0, step=1.0)
-frame_stride = st.sidebar.slider("Integration steps per displayed frame", min_value=1, max_value=50, value=4, step=1)
-trail_frames = st.sidebar.slider("Trail length [displayed frames]", min_value=5, max_value=300, value=80, step=5)
+total_years = st.sidebar.slider("Simulated time [yr]", min_value=0.5, max_value=250.0, value=12.0, step=0.5)
+dt_days = st.sidebar.slider("RK4 time step [days]", min_value=0.25, max_value=20.0, value=1.0, step=0.25)
+store_stride = st.sidebar.slider("Stored trajectory stride [RK4 steps]", min_value=1, max_value=20, value=1, step=1)
+trail_years = st.sidebar.slider("Visible trail length [yr]", min_value=0.05, max_value=50.0, value=1.5, step=0.05)
+
+st.sidebar.caption(
+    "Smooth zoomed-in trails require a small RK4 step and stored stride = 1. "
+    "Playback speed is controlled separately below."
+)
 
 st.sidebar.header("1PN parameters")
 log10_c = st.sidebar.slider("log10(c [AU/yr])", min_value=1.0, max_value=6.0, value=math.log10(C_REAL_AU_PER_YR), step=0.05)
@@ -523,9 +465,11 @@ st.sidebar.caption(f"1PN multiplier = {10.0 ** pn_log10:.3g}")
 
 st.sidebar.header("Display sizes")
 size_gamma = st.sidebar.slider("Planet size compression gamma", 0.05, 0.80, 0.25, 0.05)
-sun_marker = st.sidebar.slider("Sun marker diameter [px]", 2.0, 20.0, 7.0, 0.5)
-planet_min = st.sidebar.slider("Minimum planet diameter [px]", 3.0, 14.0, 7.0, 0.5)
-planet_max = st.sidebar.slider("Largest planet diameter [px]", 5.0, 25.0, 13.0, 0.5)
+sun_marker = st.sidebar.slider("Sun marker diameter [px]", 2.0, 20.0, 6.0, 0.5)
+planet_min = st.sidebar.slider("Minimum planet diameter [px]", 3.0, 16.0, 7.5, 0.5)
+planet_max = st.sidebar.slider("Largest planet diameter [px]", 5.0, 28.0, 14.0, 0.5)
+line_width = st.sidebar.slider("Trail line width [px]", 1.0, 6.0, 2.0, 0.5)
+show_labels = st.sidebar.checkbox("Show body labels", value=True)
 
 st.sidebar.header("Mass scaling")
 sun_mass_log10 = st.sidebar.slider("Sun: log10(M/M_real)", -3.0, 3.0, 0.0, 0.1)
@@ -539,25 +483,40 @@ with st.sidebar.expander("Individual planet distances", expanded=False):
     for name in PLANET_NAMES:
         planet_distance_scale.append(st.slider(f"{name}: a/a_real", 0.10, 5.00, 1.00, 0.05, key=f"dist_{name}"))
 
-st.sidebar.header("Playback")
-frame_estimate = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR) / max(frame_stride, 1))) + 1
+st.sidebar.header("Playback and smoothness")
+# Number of internal steps and stored points.  The plotted curve is made of the
+# stored points; live playback advances through the stored points.
 n_step_estimate = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR)))
-st.sidebar.caption(f"Internal RK4 steps: {n_step_estimate:,}; displayed frames: about {frame_estimate:,}")
+stored_frame_estimate = int(math.ceil(n_step_estimate / max(store_stride, 1))) + 1
+stored_days_per_frame = float(dt_days) * max(int(store_stride), 1)
+st.sidebar.caption(
+    f"Internal RK4 steps: {n_step_estimate:,}; stored frames: about {stored_frame_estimate:,}; "
+    f"stored spacing: {stored_days_per_frame:.2f} days."
+)
 
-# Two playback modes are provided:
-# 1. Streamlit live playback: Start/Pause buttons advance the displayed frame by
-#    rerunning the app on a timer. This is the most visible option for web use.
-# 2. Plotly animation: a Play button is embedded directly inside the Plotly chart.
-live_interval_ms = st.sidebar.slider("Live playback refresh [ms]", 100, 2000, 250, 50)
-frames_per_refresh = st.sidebar.slider("Frames advanced per refresh", 1, 20, 2, 1)
+live_interval_ms = st.sidebar.slider("Live playback refresh [ms]", 80, 2000, 120, 20)
+frames_per_refresh = st.sidebar.slider("Stored frames advanced per refresh", 1, 200, 20, 1)
 loop_playback = st.sidebar.checkbox("Loop live playback", value=True)
-use_animation = st.sidebar.checkbox("Also create Plotly chart Play button", value=True)
-max_animation_frames = st.sidebar.slider("Max Plotly animation frames", 20, 250, 120, 10)
+high_quality_trails = st.sidebar.checkbox("High-quality trails", value=True)
+manual_trail_stride = st.sidebar.slider("Manual trail point stride", 1, 20, 1, 1)
 
-if n_step_estimate > 20_000:
+if high_quality_trails:
+    trail_point_stride = 1
+else:
+    trail_point_stride = int(manual_trail_stride)
+
+simulated_days_per_second = (stored_days_per_frame * frames_per_refresh) / (live_interval_ms / 1000.0)
+st.sidebar.caption(f"Approximate live speed: {simulated_days_per_second:.0f} simulated days/s.")
+
+if n_step_estimate > 40_000:
     st.error(
-        "The selected time span and time step would require more than 20,000 RK4 steps. "
-        "Increase the time step, shorten the simulated time, or increase steps per displayed frame."
+        "The selected time span and time step would require more than 40,000 RK4 steps. "
+        "Increase the time step, shorten the simulated time, or increase the stored trajectory stride."
+    )
+    st.stop()
+if stored_frame_estimate > 30_000:
+    st.error(
+        "The selected settings would store more than 30,000 frames. Increase stored trajectory stride or shorten simulated time."
     )
     st.stop()
 
@@ -565,7 +524,7 @@ with st.spinner("Integrating Newton and 1PN trajectories..."):
     times, frames_n, frames_p, masses, diag_n, diag_p = simulate_cached(
         total_years=float(total_years),
         dt_days=float(dt_days),
-        frame_stride=int(frame_stride),
+        store_stride=int(store_stride),
         sun_mass_log10=float(sun_mass_log10),
         planet_mass_log10=tuple(float(x) for x in planet_mass_log10),
         planet_distance_scale=tuple(float(x) for x in planet_distance_scale),
@@ -577,8 +536,9 @@ visible_indices = visible_body_indices(view)
 
 # Reset live playback whenever a physical or display parameter is changed.
 parameter_signature = repr((
-    view, total_years, dt_days, frame_stride, trail_frames,
+    view, total_years, dt_days, store_stride, trail_years,
     log10_c, pn_log10, size_gamma, sun_marker, planet_min, planet_max,
+    line_width, show_labels, high_quality_trails, manual_trail_stride,
     sun_mass_log10, tuple(planet_mass_log10), tuple(planet_distance_scale),
 ))
 if st.session_state.get("last_parameter_signature") != parameter_signature:
@@ -625,19 +585,17 @@ if st.session_state.running:
         st.session_state.live_frame = int(next_frame)
     else:
         st.warning(
-            "Live playback requires the optional package streamlit-autorefresh. "
-            "Install it or use the Plotly Play button in the chart."
+            "Live playback requires streamlit-autorefresh. Install it or use the manual frame slider."
         )
 else:
     st.session_state.live_frame = st.slider(
-        "Displayed time frame",
+        "Displayed stored frame",
         0,
         len(times) - 1,
         int(st.session_state.live_frame),
     )
 
 current_frame = int(st.session_state.live_frame)
-
 sizes = marker_sizes(visible_indices, size_gamma, sun_marker, planet_min, planet_max)
 fig = make_figure(
     times=times,
@@ -645,12 +603,13 @@ fig = make_figure(
     frames_p=frames_p,
     frame_index=current_frame,
     visible_indices=visible_indices,
-    trail_frames=trail_frames,
+    trail_years=trail_years,
+    trail_point_stride=trail_point_stride,
     sizes=sizes,
-    animate=use_animation,
-    max_animation_frames=max_animation_frames,
+    show_labels=show_labels,
+    line_width=line_width,
 )
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True, "displaylogo": False})
 
 col1, col2, col3, col4 = st.columns(4)
 with col1:
@@ -690,6 +649,7 @@ for i, body in enumerate(BODIES[1:], start=1):
 st.dataframe(rows, hide_index=True, use_container_width=True)
 
 st.caption(
-    "Marker diameters are visually compressed and are not plotted on the same linear AU scale as the orbital distances. "
-    "The compression preserves the ordering of body radii but is chosen so that both the Sun and the planets remain visible."
+    "The plotted curves are drawn from stored trajectory points. If the orbit looks polygonal after zooming, use a smaller RK4 time step, "
+    "set Stored trajectory stride to 1, and keep High-quality trails enabled. For faster apparent motion, increase Stored frames advanced per refresh; "
+    "this changes only the display speed, not the numerical integration. Marker diameters are visually compressed and are not plotted on the same AU scale as the orbital distances."
 )
