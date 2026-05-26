@@ -3,6 +3,10 @@
 """
 Fast Streamlit web app: Solar-System Newton gravity vs pairwise 1PN approximation.
 
+Fixed animation version: Plotly 3D frames use redraw=True and fully specify
+the animated marker traces, which is required for reliable Scatter3d playback
+in browsers and Streamlit.
+
 Run locally:
     streamlit run app.py
 
@@ -395,12 +399,23 @@ def make_fast_figure(
     for k, idx in enumerate(anim_idx):
         pts_n = frames_n[idx, visible_indices, :]
         pts_p = frames_p[idx, visible_indices, :]
+        # For Scatter3d/WebGL traces, Plotly playback is much more reliable
+        # when redraw=True is used in the animation controls below.  We also
+        # provide complete marker traces in every frame instead of only x/y/z.
         frames.append(
             go.Frame(
                 name=str(k),
                 data=[
-                    go.Scatter3d(x=pts_n[:, 0], y=pts_n[:, 1], z=pts_n[:, 2]),
-                    go.Scatter3d(x=pts_p[:, 0], y=pts_p[:, 1], z=pts_p[:, 2]),
+                    go.Scatter3d(
+                        x=pts_n[:, 0], y=pts_n[:, 1], z=pts_n[:, 2],
+                        mode=marker_mode, marker=marker_common, text=text_values,
+                        textposition="top center", hovertemplate=hover,
+                    ),
+                    go.Scatter3d(
+                        x=pts_p[:, 0], y=pts_p[:, 1], z=pts_p[:, 2],
+                        mode=marker_mode, marker=marker_common, text=text_values,
+                        textposition="top center", hovertemplate=hover,
+                    ),
                 ],
                 traces=[newton_marker_trace_index, pn_marker_trace_index],
                 layout=go.Layout(title_text=f"Solar-System model: t = {times[idx]:.2f} yr"),
@@ -423,7 +438,7 @@ def make_fast_figure(
         slider_steps.append(
             dict(
                 method="animate",
-                args=[[str(k)], {"mode": "immediate", "frame": {"duration": 0, "redraw": False}, "transition": {"duration": 0}}],
+                args=[[str(k)], {"mode": "immediate", "frame": {"duration": 0, "redraw": True}, "transition": {"duration": 0}}],
                 label=f"{times[idx]:.1f}",
             )
         )
@@ -431,29 +446,29 @@ def make_fast_figure(
     fig.update_layout(
         scene=axis_template,
         scene2=axis_template,
-        height=740,
-        margin=dict(l=5, r=5, t=70, b=5),
+        height=760,
+        margin=dict(l=5, r=5, t=105, b=5),
         title=f"Solar-System model: t = 0.00 yr",
         uirevision="solar-system-fast",
         updatemenus=[
             dict(
                 type="buttons",
                 direction="left",
-                x=0.03,
-                y=0.02,
+                x=0.02,
+                y=1.10,
                 xanchor="left",
-                yanchor="bottom",
+                yanchor="top",
                 showactive=False,
                 buttons=[
                     dict(
                         label="▶ Play",
                         method="animate",
-                        args=[None, {"frame": {"duration": int(frame_duration_ms), "redraw": False}, "fromcurrent": True, "transition": {"duration": 0}, "mode": "immediate"}],
+                        args=[None, {"frame": {"duration": int(frame_duration_ms), "redraw": True}, "fromcurrent": True, "transition": {"duration": 0}, "mode": "immediate"}],
                     ),
                     dict(
                         label="⏸ Pause",
                         method="animate",
-                        args=[[None], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate", "transition": {"duration": 0}}],
+                        args=[[None], {"frame": {"duration": 0, "redraw": True}, "mode": "immediate", "transition": {"duration": 0}}],
                     ),
                 ],
             )
@@ -583,8 +598,8 @@ fig = make_fast_figure(
 st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True, "displaylogo": False})
 
 st.info(
-    "Use the Plotly ▶ Play button below the graph. This version does not use Streamlit live reruns; "
-    "the browser animates the markers directly, which should be much smoother."
+    "Use the Plotly ▶ Play button above the left plot. This fixed version uses Plotly 3D redraw frames, "
+    "so the planet markers should visibly move while the precomputed orbit curves remain static."
 )
 
 col1, col2, col3, col4 = st.columns(4)
