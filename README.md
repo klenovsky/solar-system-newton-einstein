@@ -1,20 +1,54 @@
-# Solar-System motion: Newton gravity vs. Einstein GTR 1PN approximation
+# Solar-System Newton vs. 1PN Streamlit app
 
-Fast Streamlit + Plotly web application.
+This is a Streamlit web application that visualizes a simplified Solar-System model in 3D.
 
-This version is optimized for Streamlit Cloud usability:
+The left panel integrates Newtonian N-body gravity. The right panel integrates Newtonian gravity plus a pairwise two-body first post-Newtonian (1PN) correction inspired by general relativity.
 
-- all controls are inside a sidebar form;
-- dragging sliders does **not** recompute trajectories;
-- click **Apply and recompute** to update the simulation;
-- Plotly uses a fixed `uirevision` to preserve the 3D camera/zoom as much as possible across reruns;
-- browser-side animation moves only the body markers, while orbit curves are static.
+The model is educational. It is not a full Einstein-Infeld-Hoffmann N-body ephemeris and not a JPL Horizons replacement.
 
-Run locally:
+## Files
+
+```text
+app.py
+requirements.txt
+README.md
+```
+
+## Local run
+
+Create and activate a Python environment, then install dependencies:
 
 ```bash
 pip install -r requirements.txt
+```
+
+Run the application:
+
+```bash
 streamlit run app.py
 ```
 
-The model is a simplified circular-orbit Solar-System demonstration. It is not a date-specific JPL ephemeris and not full numerical relativity. The right panel uses a pairwise two-body 1PN correction.
+## Deploy on Streamlit Community Cloud
+
+1. Create a GitHub repository.
+2. Upload `app.py`, `requirements.txt`, and `README.md` to the repository root.
+3. Go to Streamlit Community Cloud.
+4. Click `Create app`.
+5. Select the repository, branch, and entrypoint file `app.py`.
+6. Deploy.
+
+## Notes
+
+The app uses units AU, Julian year, and solar mass. In these units
+
+```text
+G = 4*pi^2 AU^3 / (M_sun yr^2)
+```
+
+The physical speed of light is approximately
+
+```text
+c = 63241 AU/yr
+```
+
+The plotted body diameters are visually compressed. They preserve the ordering of physical radii, but they are not drawn on the same linear scale as the orbital distances.

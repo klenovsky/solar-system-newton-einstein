@@ -1,44 +1,46 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Fast Streamlit web app: Solar-System Newton gravity vs pairwise 1PN approximation.
-
-Form-based fixed animation version: sidebar sliders are staged and trajectories
-are recomputed only when Apply and recompute is pressed. Plotly uses a fixed
-uirevision to better preserve camera/zoom across reruns.
+Streamlit web application: Newtonian vs. pairwise 1PN Solar-System model.
 
 Run locally:
     streamlit run app.py
 
-Main design choice in this fast version:
-    - Streamlit is used only to choose parameters and build the figure.
-    - The animation itself is handled inside Plotly in the browser.
-    - The full orbit curves are static traces.
-    - Only the moving body markers are animated.
+Deploy:
+    Put app.py and requirements.txt into a GitHub repository and deploy the
+    repository on Streamlit Community Cloud.
 
-This avoids the slow Streamlit autorefresh/rerun loop and is much smoother on
-Streamlit Community Cloud and ordinary browsers.
+Model summary
+-------------
+Units:
+    length = AU, time = Julian year, mass = solar mass.
+
+The left panel integrates Newtonian N-body gravity.  The right panel integrates
+Newtonian gravity plus a pairwise two-body first post-Newtonian (1PN) correction.
+The 1PN part is intended for visualization of weak relativistic corrections. It
+is not a full Einstein-Infeld-Hoffmann many-body ephemeris and it is not a JPL
+Horizons replacement.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-import math
 from typing import Iterable, Sequence
+import math
 
 import numpy as np
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
 
+
 # =============================================================================
-# Units and body data
+# Physical constants and default body data
 # =============================================================================
 
-# Units: length = AU, time = Julian year, mass = solar mass.
 G_MODEL = 4.0 * math.pi * math.pi       # AU^3 / (M_sun yr^2)
-C_REAL_AU_PER_YR = 63241.07708426628    # c in AU/year
-SOFTENING_AU = 1.0e-7                   # tiny numerical softening
+C_REAL_AU_PER_YR = 63241.07708426628    # physical speed of light in AU/year
+SOFTENING_AU = 1.0e-6                   # purely numerical softening
 DAYS_PER_YEAR = 365.25
 SUN_RADIUS_KM = 696_340.0
 MSUN_KG = 1.98847e30
@@ -55,9 +57,9 @@ class BodyData:
     color: str
 
 
-# Rounded NASA/JPL-style physical parameters.  The initial conditions are
-# simplified circular orbits based on semi-major axes; this is not an ephemeris
-# for a particular date.
+# Masses/radii are standard rounded planetary physical parameters.  The orbital
+# elements are simplified mean/semi-major-axis values used only to create
+# didactic initial conditions, not a date-specific ephemeris.
 BODIES: tuple[BodyData, ...] = (
     BodyData("Sun", 1.0, SUN_RADIUS_KM, 0.0, 0.0, 0.0, "gold"),
     BodyData("Mercury", 0.330103e24 / MSUN_KG, 2439.4, 0.38709927, 7.00497902, 252.25032350, "dimgray"),
@@ -70,21 +72,24 @@ BODIES: tuple[BodyData, ...] = (
     BodyData("Neptune", 102.4092e24 / MSUN_KG, 24622.0, 30.06992276, 1.77004347, -55.12002969, "purple"),
 )
 
-PLANET_NAMES = tuple(b.name for b in BODIES[1:])
-PLANET_MAX_RADIUS_KM = max(b.radius_km for b in BODIES[1:])
+PLANET_NAMES = tuple(body.name for body in BODIES[1:])
+BODY_NAMES = tuple(body.name for body in BODIES)
+PLANET_MAX_RADIUS_KM = max(body.radius_km for body in BODIES[1:])
 
 
 # =============================================================================
-# Mechanics
+# Low-level mechanics
 # =============================================================================
 
 def rotation_x(angle_rad: float) -> np.ndarray:
+    """Rotation matrix around x; used to tilt simplified circular orbits."""
     c = math.cos(angle_rad)
     s = math.sin(angle_rad)
     return np.array(((1.0, 0.0, 0.0), (0.0, c, -s), (0.0, s, c)), dtype=float)
 
 
 def barycentric_transform(pos: np.ndarray, vel: np.ndarray, masses: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """Move positions and velocities into the barycentric frame."""
     total_mass = float(np.sum(masses))
     r_cm = np.sum(pos * masses[:, None], axis=0) / total_mass
     v_cm = np.sum(vel * masses[:, None], axis=0) / total_mass
@@ -96,23 +101,31 @@ def build_initial_conditions(
     planet_mass_log10: Sequence[float],
     planet_distance_scale: Sequence[float],
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Create simplified circular-orbit initial conditions."""
+    """Create simplified initial conditions for Sun + eight planets.
+
+    Planet positions start on tilted circular orbits with radii equal to
+    semi_major_axis * distance_scale.  Velocities are circular Keplerian speeds
+    for the scaled Sun mass and scaled planet mass.  This gives a clean didactic
+    model, not a high-precision ephemeris for a specific date.
+    """
     n = len(BODIES)
     masses = np.zeros(n, dtype=float)
     pos = np.zeros((n, 3), dtype=float)
     vel = np.zeros((n, 3), dtype=float)
 
-    masses[0] = max(10.0 ** float(sun_mass_log10), 1.0e-15) * BODIES[0].mass_msun
+    sun_factor = 10.0 ** float(sun_mass_log10)
+    masses[0] = max(sun_factor, 1.0e-15) * BODIES[0].mass_msun
 
     for i, body in enumerate(BODIES[1:], start=1):
-        mass_factor = 10.0 ** float(planet_mass_log10[i - 1])
-        dist_factor = max(float(planet_distance_scale[i - 1]), 1.0e-5)
-        masses[i] = max(mass_factor, 0.0) * body.mass_msun
+        m_factor = 10.0 ** float(planet_mass_log10[i - 1])
+        d_factor = max(float(planet_distance_scale[i - 1]), 1.0e-4)
+        masses[i] = max(m_factor, 0.0) * body.mass_msun
 
-        r = max(body.semi_major_au * dist_factor, 1.0e-6)
+        r = max(body.semi_major_au * d_factor, 1.0e-6)
         phase = math.radians(body.phase_deg)
         inc = math.radians(body.inclination_deg)
 
+        # Circular orbit in the local orbital plane.
         local_pos = np.array((r * math.cos(phase), r * math.sin(phase), 0.0), dtype=float)
         speed = math.sqrt(G_MODEL * (masses[0] + masses[i]) / r)
         local_vel = np.array((-speed * math.sin(phase), speed * math.cos(phase), 0.0), dtype=float)
@@ -126,17 +139,17 @@ def build_initial_conditions(
 
 
 def acceleration_newton(pos: np.ndarray, masses: np.ndarray) -> np.ndarray:
-    """Newtonian N-body acceleration with small softening."""
+    """Newtonian N-body acceleration with a tiny numerical softening."""
     n = len(masses)
     acc = np.zeros_like(pos)
     for i in range(n):
-        for j in range(i + 1, n):
+        for j in range(n):
+            if i == j:
+                continue
             dr = pos[i] - pos[j]
             r2 = float(np.dot(dr, dr)) + SOFTENING_AU * SOFTENING_AU
             inv_r3 = 1.0 / (r2 * math.sqrt(r2))
-            pair = -G_MODEL * dr * inv_r3
-            acc[i] += masses[j] * pair
-            acc[j] -= masses[i] * pair
+            acc[i] += -G_MODEL * masses[j] * dr * inv_r3
     return acc
 
 
@@ -147,11 +160,15 @@ def acceleration_pairwise_1pn(
     c_au_per_year: float,
     pn_multiplier: float,
 ) -> np.ndarray:
-    """Newtonian acceleration plus pairwise two-body 1PN correction.
+    """Newtonian N-body acceleration plus pairwise two-body 1PN corrections.
 
-    This is intentionally not a full Einstein-Infeld-Hoffmann N-body model.  It
-    adds standard relative two-body 1PN corrections pair by pair, which is
-    adequate for a didactic visualization of weak relativistic deviations.
+    For each pair i,j the standard relative two-body 1PN correction is computed
+    in harmonic-coordinate form and split between the two bodies so that the
+    pair center-of-mass acceleration remains zero.
+
+    This is useful pedagogically, especially for a Sun-dominated system, but it
+    is not the full Einstein-Infeld-Hoffmann N-body equation because the genuine
+    1PN three-body terms are not included.
     """
     acc = acceleration_newton(pos, masses)
     if pn_multiplier == 0.0:
@@ -161,9 +178,9 @@ def acceleration_pairwise_1pn(
     if c2 <= 0.0:
         return acc
 
-    n = len(masses)
-    for i in range(n):
-        for j in range(i + 1, n):
+    n_bodies = len(masses)
+    for i in range(n_bodies):
+        for j in range(i + 1, n_bodies):
             mi = masses[i]
             mj = masses[j]
             mtot = mi + mj
@@ -183,16 +200,19 @@ def acceleration_pairwise_1pn(
                 nvec * ((4.0 + 2.0 * eta) * G_MODEL * mtot / r - (1.0 + 3.0 * eta) * v2 + 1.5 * eta * rdot * rdot)
                 + (4.0 - 2.0 * eta) * rdot * vrel
             )
-            a_rel_corr = pn_multiplier * (G_MODEL * mtot / (c2 * r2)) * bracket
+            a_rel_corr = (G_MODEL * mtot / (c2 * r2)) * bracket
+            a_rel_corr *= pn_multiplier
 
-            # Keep the pair center-of-mass acceleration zero.
+            # Split the relative correction a_i - a_j while keeping
+            # mi*a_i_corr + mj*a_j_corr = 0.
             acc[i] += (mj / mtot) * a_rel_corr
-            acc[j] -= (mi / mtot) * a_rel_corr
+            acc[j] += -(mi / mtot) * a_rel_corr
 
     return acc
 
 
 def rhs(state: np.ndarray, masses: np.ndarray, model: str, c_value: float, pn_multiplier: float) -> np.ndarray:
+    """Right-hand side of the first-order ODE system."""
     n = len(masses)
     pos = state[: 3 * n].reshape((n, 3))
     vel = state[3 * n :].reshape((n, 3))
@@ -201,11 +221,12 @@ def rhs(state: np.ndarray, masses: np.ndarray, model: str, c_value: float, pn_mu
     elif model == "1pn":
         acc = acceleration_pairwise_1pn(pos, vel, masses, c_value, pn_multiplier)
     else:
-        raise ValueError(model)
+        raise ValueError(f"unknown model: {model}")
     return np.concatenate((vel.reshape(-1), acc.reshape(-1)))
 
 
 def rk4_step(state: np.ndarray, dt: float, masses: np.ndarray, model: str, c_value: float, pn_multiplier: float) -> np.ndarray:
+    """One fourth-order Runge-Kutta time step."""
     k1 = rhs(state, masses, model, c_value, pn_multiplier)
     k2 = rhs(state + 0.5 * dt * k1, masses, model, c_value, pn_multiplier)
     k3 = rhs(state + 0.5 * dt * k2, masses, model, c_value, pn_multiplier)
@@ -213,18 +234,36 @@ def rk4_step(state: np.ndarray, dt: float, masses: np.ndarray, model: str, c_val
     return state + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
 
 
+def diagnostics(pos: np.ndarray, vel: np.ndarray, masses: np.ndarray, c_value: float) -> dict[str, float]:
+    """Return simple 1PN validity diagnostics."""
+    speeds = np.linalg.norm(vel, axis=1)
+    max_v_over_c = float(np.max(speeds) / max(c_value, 1.0e-30))
+
+    max_compactness = 0.0
+    n = len(masses)
+    for i in range(n):
+        for j in range(i + 1, n):
+            dr = pos[i] - pos[j]
+            r = math.sqrt(float(np.dot(dr, dr)) + SOFTENING_AU * SOFTENING_AU)
+            value_i = G_MODEL * masses[i] / (r * c_value * c_value)
+            value_j = G_MODEL * masses[j] / (r * c_value * c_value)
+            max_compactness = max(max_compactness, value_i, value_j)
+
+    return {"max_v_over_c": max_v_over_c, "max_GM_over_rc2": float(max_compactness)}
+
+
 @st.cache_data(show_spinner=False)
 def simulate_cached(
     total_years: float,
     dt_days: float,
-    stored_stride: int,
+    frame_stride: int,
     sun_mass_log10: float,
     planet_mass_log10: tuple[float, ...],
     planet_distance_scale: tuple[float, ...],
     c_value: float,
     pn_log10: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, float]]:
-    """Integrate both models and return stored trajectory frames."""
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, float], dict[str, float]]:
+    """Integrate Newton and 1PN models and return downsampled frames."""
     pos0, vel0, masses = build_initial_conditions(sun_mass_log10, planet_mass_log10, planet_distance_scale)
     n = len(masses)
     state_n = np.concatenate((pos0.reshape(-1), vel0.reshape(-1)))
@@ -232,12 +271,12 @@ def simulate_cached(
 
     dt = float(dt_days) / DAYS_PER_YEAR
     n_steps = int(math.ceil(float(total_years) / dt))
-    stored_stride = max(int(stored_stride), 1)
+    frame_stride = max(int(frame_stride), 1)
     pn_multiplier = 10.0 ** float(pn_log10)
 
-    times: list[float] = []
-    frames_n: list[np.ndarray] = []
-    frames_p: list[np.ndarray] = []
+    times = []
+    frames_n = []
+    frames_p = []
 
     def store(step: int) -> None:
         times.append(step * dt)
@@ -248,93 +287,77 @@ def simulate_cached(
     for step in range(1, n_steps + 1):
         state_n = rk4_step(state_n, dt, masses, "newton", c_value, pn_multiplier)
         state_p = rk4_step(state_p, dt, masses, "1pn", c_value, pn_multiplier)
-        if step % stored_stride == 0 or step == n_steps:
+        if step % frame_stride == 0 or step == n_steps:
             store(step)
 
-    vel_n = state_n[3 * n :].reshape((n, 3))
-    vel_p = state_p[3 * n :].reshape((n, 3))
-    diag = diagnostics(np.asarray(frames_n), np.asarray(frames_p), vel_n, vel_p, masses, c_value)
-    return np.asarray(times), np.asarray(frames_n), np.asarray(frames_p), masses, diag
-
-
-def diagnostics(frames_n: np.ndarray, frames_p: np.ndarray, vel_n: np.ndarray, vel_p: np.ndarray, masses: np.ndarray, c_value: float) -> dict[str, float]:
-    max_v_over_c = max(float(np.max(np.linalg.norm(vel_n, axis=1))) / c_value, float(np.max(np.linalg.norm(vel_p, axis=1))) / c_value)
-    max_compactness = 0.0
-    final_positions = [frames_n[-1], frames_p[-1]]
-    for pos in final_positions:
-        n = len(masses)
-        for i in range(n):
-            for j in range(i + 1, n):
-                dr = pos[i] - pos[j]
-                r = math.sqrt(float(np.dot(dr, dr)) + SOFTENING_AU * SOFTENING_AU)
-                max_compactness = max(max_compactness, G_MODEL * masses[i] / (r * c_value * c_value), G_MODEL * masses[j] / (r * c_value * c_value))
-    return {"max_v_over_c": max_v_over_c, "max_GM_over_rc2": max_compactness}
+    diag_n = diagnostics(frames_n[-1], state_n[3 * n :].reshape((n, 3)), masses, c_value)
+    diag_p = diagnostics(frames_p[-1], state_p[3 * n :].reshape((n, 3)), masses, c_value)
+    return (
+        np.asarray(times),
+        np.asarray(frames_n),
+        np.asarray(frames_p),
+        masses,
+        diag_n,
+        diag_p,
+    )
 
 
 # =============================================================================
-# Plotting
+# Plot helpers
 # =============================================================================
 
 def visible_body_indices(view: str) -> list[int]:
     if view == "Inner planets":
-        return list(range(0, 5))
+        return list(range(0, 5))       # Sun through Mars
     if view == "To Jupiter":
-        return list(range(0, 6))
+        return list(range(0, 6))       # Sun through Jupiter
     return list(range(0, len(BODIES)))
 
 
-def marker_sizes(indices: Iterable[int], gamma: float, sun_size: float, planet_min: float, planet_max: float) -> list[float]:
-    sizes: list[float] = []
+def marker_sizes(
+    indices: Iterable[int],
+    gamma: float,
+    sun_size: float,
+    planet_min_size: float,
+    planet_max_size: float,
+) -> list[float]:
+    sizes = []
     for idx in indices:
         body = BODIES[idx]
         if idx == 0:
             sizes.append(float(sun_size))
         else:
             normalized = max(body.radius_km / PLANET_MAX_RADIUS_KM, 1.0e-12)
-            sizes.append(float(planet_min + (planet_max - planet_min) * normalized ** gamma))
+            sizes.append(float(planet_min_size + (planet_max_size - planet_min_size) * normalized ** gamma))
     return sizes
 
 
-def axis_range_for(frames_n: np.ndarray, frames_p: np.ndarray, indices: Sequence[int]) -> tuple[float, float]:
-    selected = np.concatenate((frames_n[:, indices, :].reshape((-1, 3)), frames_p[:, indices, :].reshape((-1, 3))), axis=0)
-    max_abs = float(np.nanmax(np.abs(selected)))
+def axis_range_for(frames_a: np.ndarray, frames_b: np.ndarray, indices: Sequence[int]) -> tuple[float, float]:
+    selected = np.concatenate((frames_a[:, indices, :].reshape((-1, 3)), frames_b[:, indices, :].reshape((-1, 3))), axis=0)
+    max_abs = float(np.max(np.abs(selected)))
     if not np.isfinite(max_abs) or max_abs < 0.5:
         max_abs = 1.0
-    return -1.10 * max_abs, 1.10 * max_abs
+    margin = 1.12 * max_abs
+    return -margin, margin
 
 
-def downsample_indices(n_points: int, max_points: int) -> np.ndarray:
-    if n_points <= max_points:
-        return np.arange(n_points, dtype=int)
-    return np.unique(np.linspace(0, n_points - 1, max_points).astype(int))
+def trail_slice(frame: int, trail_frames: int) -> slice:
+    start = max(0, frame - max(int(trail_frames), 1) + 1)
+    return slice(start, frame + 1)
 
 
-def animation_indices(n_points: int, max_frames: int) -> np.ndarray:
-    max_frames = max(int(max_frames), 2)
-    if n_points <= max_frames:
-        return np.arange(n_points, dtype=int)
-    return np.unique(np.linspace(0, n_points - 1, max_frames).astype(int))
-
-
-def make_fast_figure(
+def make_figure(
     times: np.ndarray,
     frames_n: np.ndarray,
     frames_p: np.ndarray,
+    frame_index: int,
     visible_indices: Sequence[int],
+    trail_frames: int,
     sizes: Sequence[float],
-    show_labels: bool,
-    orbit_max_points: int,
+    animate: bool,
     max_animation_frames: int,
-    frame_duration_ms: int,
-    line_width: float,
-    marker_opacity: float,
-    show_orbit_lines: bool,
 ) -> go.Figure:
-    """Create a Plotly figure with browser-side animation.
-
-    Static traces: full orbit lines.
-    Animated traces: only the body marker positions.
-    """
+    """Build static or animated Plotly figure."""
     fig = make_subplots(
         rows=1,
         cols=2,
@@ -343,349 +366,190 @@ def make_fast_figure(
         horizontal_spacing=0.02,
     )
 
-    names = [BODIES[i].name for i in visible_indices]
     colors = [BODIES[i].color for i in visible_indices]
-    marker_mode = "markers+text" if show_labels else "markers"
-    text_values = names if show_labels else None
+    names = [BODIES[i].name for i in visible_indices]
 
-    line_idx = downsample_indices(len(times), int(orbit_max_points))
-
-    if show_orbit_lines:
-        for col, frames, prefix in ((1, frames_n, "Newton"), (2, frames_p, "1PN")):
-            for idx in visible_indices:
-                body = BODIES[idx]
-                xyz = frames[line_idx, idx, :]
-                fig.add_trace(
-                    go.Scatter3d(
-                        x=xyz[:, 0], y=xyz[:, 1], z=xyz[:, 2],
-                        mode="lines",
-                        line=dict(width=float(line_width), color=body.color),
-                        opacity=0.78,
-                        name=f"{prefix} {body.name} orbit",
-                        showlegend=False,
-                        hoverinfo="skip",
-                    ),
-                    row=1, col=col,
-                )
-
-    # Two marker traces are the only traces updated by animation frames.
-    pts_n0 = frames_n[0, visible_indices, :]
-    pts_p0 = frames_p[0, visible_indices, :]
-    marker_common = dict(size=list(sizes), color=colors, opacity=float(marker_opacity), sizemode="diameter")
-    hover = "%{text}<br>x=%{x:.4f} AU<br>y=%{y:.4f} AU<br>z=%{z:.4f} AU<extra></extra>"
-
-    fig.add_trace(
-        go.Scatter3d(
-            x=pts_n0[:, 0], y=pts_n0[:, 1], z=pts_n0[:, 2],
-            mode=marker_mode, marker=marker_common, text=text_values, textposition="top center",
-            name="Newton bodies", showlegend=False, hovertemplate=hover,
-        ),
-        row=1, col=1,
-    )
-    newton_marker_trace_index = len(fig.data) - 1
-
-    fig.add_trace(
-        go.Scatter3d(
-            x=pts_p0[:, 0], y=pts_p0[:, 1], z=pts_p0[:, 2],
-            mode=marker_mode, marker=marker_common, text=text_values, textposition="top center",
-            name="1PN bodies", showlegend=False, hovertemplate=hover,
-        ),
-        row=1, col=2,
-    )
-    pn_marker_trace_index = len(fig.data) - 1
-
-    anim_idx = animation_indices(len(times), int(max_animation_frames))
-    frames: list[go.Frame] = []
-    for k, idx in enumerate(anim_idx):
-        pts_n = frames_n[idx, visible_indices, :]
-        pts_p = frames_p[idx, visible_indices, :]
-        # For Scatter3d/WebGL traces, Plotly playback is much more reliable
-        # when redraw=True is used in the animation controls below.  We also
-        # provide complete marker traces in every frame instead of only x/y/z.
-        frames.append(
-            go.Frame(
-                name=str(k),
-                data=[
-                    go.Scatter3d(
-                        x=pts_n[:, 0], y=pts_n[:, 1], z=pts_n[:, 2],
-                        mode=marker_mode, marker=marker_common, text=text_values,
-                        textposition="top center", hovertemplate=hover,
-                    ),
-                    go.Scatter3d(
-                        x=pts_p[:, 0], y=pts_p[:, 1], z=pts_p[:, 2],
-                        mode=marker_mode, marker=marker_common, text=text_values,
-                        textposition="top center", hovertemplate=hover,
-                    ),
-                ],
-                traces=[newton_marker_trace_index, pn_marker_trace_index],
+    def add_model_traces(frames: np.ndarray, scene_col: int, model_prefix: str, initial_frame: int) -> None:
+        sl = trail_slice(initial_frame, trail_frames)
+        for idx in visible_indices:
+            body = BODIES[idx]
+            xyz = frames[sl, idx, :]
+            fig.add_trace(
+                go.Scatter3d(
+                    x=xyz[:, 0], y=xyz[:, 1], z=xyz[:, 2],
+                    mode="lines",
+                    line=dict(width=2, color=body.color),
+                    name=f"{model_prefix} {body.name} trail",
+                    showlegend=False,
+                    hoverinfo="skip",
+                ),
+                row=1, col=scene_col,
             )
+        pts = frames[initial_frame, visible_indices, :]
+        fig.add_trace(
+            go.Scatter3d(
+                x=pts[:, 0], y=pts[:, 1], z=pts[:, 2],
+                mode="markers+text",
+                marker=dict(size=list(sizes), color=colors, opacity=0.95, sizemode="diameter"),
+                text=names,
+                textposition="top center",
+                name=f"{model_prefix} bodies",
+                hovertemplate="%{text}<br>x=%{x:.3f} AU<br>y=%{y:.3f} AU<br>z=%{z:.3f} AU<extra></extra>",
+                showlegend=False,
+            ),
+            row=1, col=scene_col,
         )
-    fig.frames = frames
+
+    frame_index = int(np.clip(frame_index, 0, len(times) - 1))
+    add_model_traces(frames_n, 1, "Newton", frame_index)
+    add_model_traces(frames_p, 2, "1PN", frame_index)
 
     axis_min, axis_max = axis_range_for(frames_n, frames_p, visible_indices)
     axis_template = dict(
-        xaxis=dict(title="x [AU]", range=[axis_min, axis_max], showspikes=False),
-        yaxis=dict(title="y [AU]", range=[axis_min, axis_max], showspikes=False),
-        zaxis=dict(title="z [AU]", range=[axis_min, axis_max], showspikes=False),
+        xaxis=dict(title="x [AU]", range=[axis_min, axis_max]),
+        yaxis=dict(title="y [AU]", range=[axis_min, axis_max]),
+        zaxis=dict(title="z [AU]", range=[axis_min, axis_max]),
         aspectmode="cube",
-        camera=dict(eye=dict(x=1.35, y=1.35, z=0.85)),
-        uirevision="solar-system-camera",
     )
-
-    # Slider steps for the animation.  Keep this client-side.
-    slider_steps = []
-    for k, idx in enumerate(anim_idx):
-        slider_steps.append(
-            dict(
-                method="animate",
-                args=[[str(k)], {"mode": "immediate", "frame": {"duration": 0, "redraw": True}, "transition": {"duration": 0}}],
-                label=f"{times[idx]:.1f}",
-            )
-        )
-
     fig.update_layout(
         scene=axis_template,
         scene2=axis_template,
         height=760,
-        margin=dict(l=5, r=5, t=105, b=5),
-        title=f"Solar-System model: t = 0.00 yr",
-        uirevision="solar-system-fast",
-        updatemenus=[
-            dict(
-                type="buttons",
-                direction="left",
-                x=0.02,
-                y=1.10,
-                xanchor="left",
-                yanchor="top",
-                showactive=False,
-                buttons=[
-                    dict(
-                        label="▶ Play",
-                        method="animate",
-                        args=[None, {"frame": {"duration": int(frame_duration_ms), "redraw": True}, "fromcurrent": True, "transition": {"duration": 0}, "mode": "immediate"}],
-                    ),
-                    dict(
-                        label="⏸ Pause",
-                        method="animate",
-                        args=[[None], {"frame": {"duration": 0, "redraw": True}, "mode": "immediate", "transition": {"duration": 0}}],
-                    ),
-                ],
-            )
-        ],
-        sliders=[
-            dict(
-                active=0,
-                currentvalue={"prefix": "t [yr] = "},
-                steps=slider_steps,
-                x=0.18,
-                y=0.02,
-                len=0.76,
-                pad={"t": 35, "b": 5},
-            )
-        ],
+        margin=dict(l=5, r=5, t=70, b=5),
+        title=f"Solar-System model: t = {times[frame_index]:.2f} yr",
     )
+
+    if animate:
+        n_total_frames = len(times)
+        if n_total_frames <= max_animation_frames:
+            selected_animation_frames = list(range(n_total_frames))
+        else:
+            selected_animation_frames = np.linspace(0, n_total_frames - 1, max_animation_frames).astype(int).tolist()
+            selected_animation_frames = sorted(set(selected_animation_frames))
+
+        trace_count_per_model = len(visible_indices) + 1
+        total_trace_count = 2 * trace_count_per_model
+        animation_frames = []
+        for fidx in selected_animation_frames:
+            frame_data = []
+            for frames in (frames_n, frames_p):
+                sl = trail_slice(fidx, trail_frames)
+                for idx in visible_indices:
+                    xyz = frames[sl, idx, :]
+                    frame_data.append(go.Scatter3d(x=xyz[:, 0], y=xyz[:, 1], z=xyz[:, 2]))
+                pts = frames[fidx, visible_indices, :]
+                frame_data.append(go.Scatter3d(x=pts[:, 0], y=pts[:, 1], z=pts[:, 2], text=names))
+            animation_frames.append(go.Frame(data=frame_data, traces=list(range(total_trace_count)), name=str(fidx)))
+
+        fig.frames = animation_frames
+        fig.update_layout(
+            updatemenus=[
+                dict(
+                    type="buttons",
+                    showactive=False,
+                    x=0.02,
+                    y=1.08,
+                    xanchor="left",
+                    yanchor="top",
+                    buttons=[
+                        dict(label="Play", method="animate", args=[None, {"frame": {"duration": 70, "redraw": True}, "fromcurrent": True}]),
+                        dict(label="Pause", method="animate", args=[[None], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate"}]),
+                    ],
+                )
+            ],
+            sliders=[
+                dict(
+                    active=0,
+                    x=0.1,
+                    y=0.01,
+                    len=0.8,
+                    steps=[
+                        dict(
+                            method="animate",
+                            label=f"{times[fidx]:.1f}",
+                            args=[[str(fidx)], {"frame": {"duration": 0, "redraw": True}, "mode": "immediate"}],
+                        )
+                        for fidx in selected_animation_frames
+                    ],
+                )
+            ],
+        )
+
     return fig
 
-
-# =============================================================================
-# Streamlit session-state defaults
-# =============================================================================
-
-DEFAULT_UI_VALUES: dict[str, object] = {
-    "view": "To Jupiter",
-    "total_years": 12.0,
-    "dt_days": 2.0,
-    "stored_stride": 1,
-    "show_orbit_lines": True,
-    "orbit_max_points": 1800,
-    "max_animation_frames": 450,
-    "frame_duration_ms": 35,
-    "log10_c": math.log10(C_REAL_AU_PER_YR),
-    "pn_log10": 0.0,
-    "size_gamma": 0.25,
-    "sun_marker": 5.0,
-    "planet_min": 8.0,
-    "planet_max": 15.0,
-    "line_width": 2.0,
-    "marker_opacity": 0.95,
-    "show_labels": True,
-    "sun_mass_log10": 0.0,
-}
-for _name in PLANET_NAMES:
-    DEFAULT_UI_VALUES[f"mass_{_name}"] = 0.0
-    DEFAULT_UI_VALUES[f"dist_{_name}"] = 1.0
-
-
-def initialize_default_state() -> None:
-    """Fill missing Streamlit widget keys with default values."""
-    for key, value in DEFAULT_UI_VALUES.items():
-        st.session_state.setdefault(key, value)
-
-
-def reset_to_initial_values() -> None:
-    """Reset all controls to their initial didactic values."""
-    for key, value in DEFAULT_UI_VALUES.items():
-        st.session_state[key] = value
-
-
-# =============================================================================
-# Streamlit UI
-# =============================================================================
 
 # =============================================================================
 # Streamlit UI
 # =============================================================================
 
 st.set_page_config(page_title="Solar System: Newton vs 1PN", layout="wide")
-initialize_default_state()
-
-# In this version, widget values are staged in a form.  The expensive numerical
-# integration uses only st.session_state["applied_params"].  Moving sliders in the
-# sidebar therefore does not recompute trajectories until the user explicitly
-# clicks Apply and recompute.
-
-FORM_KEYS = {key: f"w_{key}" for key in DEFAULT_UI_VALUES}
-
-
-def initialize_applied_and_widget_state() -> None:
-    if "applied_params" not in st.session_state:
-        st.session_state["applied_params"] = dict(DEFAULT_UI_VALUES)
-    for key, value in DEFAULT_UI_VALUES.items():
-        st.session_state.setdefault(FORM_KEYS[key], st.session_state["applied_params"].get(key, value))
-
-
-def reset_to_initial_values() -> None:
-    st.session_state["applied_params"] = dict(DEFAULT_UI_VALUES)
-    for key, value in DEFAULT_UI_VALUES.items():
-        st.session_state[FORM_KEYS[key]] = value
-
-
-def collect_form_params() -> dict[str, object]:
-    return {key: st.session_state[FORM_KEYS[key]] for key in DEFAULT_UI_VALUES}
-
-
-initialize_applied_and_widget_state()
-
 st.title("Solar-System motion: Newton gravity vs. Einstein GTR 1PN approximation")
 
-with st.expander("Model description", expanded=False):
+with st.expander("What this app computes", expanded=False):
     st.markdown(
         """
-This app integrates a simplified Solar-System model in astronomical units.  The
+The app integrates a simplified Solar-System model in astronomical units.  The
 left panel solves Newtonian N-body gravity.  The right panel solves Newtonian
-gravity plus a pairwise two-body 1PN correction.  The model is designed for
-visualization, not as a date-specific JPL ephemeris and not as full numerical
-relativity.
-
-Performance architecture of this version:
-
-- parameter widgets are inside a form;
-- moving sliders does not immediately recompute the trajectories;
-- the trajectories are recomputed only after **Apply and recompute**;
-- Plotly receives a fixed `uirevision`, which helps preserve the 3D camera/zoom
-  across Streamlit reruns;
-- animation frames update only the planet markers, while orbit curves remain
-  static.
+gravity plus a pairwise two-body 1PN correction.  The 1PN correction is a
+weak-field, slow-motion approximation inspired by general relativity; it is not
+a full Einstein-Infeld-Hoffmann many-body ephemeris and not a JPL Horizons
+replacement.
         """
     )
-    st.latex(r"\ddot{\mathbf r}_i=-\sum_{j\ne i}Gm_j\frac{\mathbf r_i-\mathbf r_j}{(|\mathbf r_i-\mathbf r_j|^2+\epsilon^2)^{3/2}}")
+    st.latex(r"\ddot{\mathbf r}_i=-\sum_{j\ne i}Gm_j\frac{\mathbf r_i-\mathbf r_j}{\left(|\mathbf r_i-\mathbf r_j|^2+\epsilon^2\right)^{3/2}}")
     st.latex(r"\mathbf a_i=\mathbf a_i^{\rm Newton}+\lambda_{\rm 1PN}\sum_{j\ne i}\mathbf a_{ij}^{\rm pairwise\;1PN}")
 
-st.sidebar.header("Presets")
-st.sidebar.button("Reset to initial values", on_click=reset_to_initial_values, use_container_width=True)
-st.sidebar.caption("Reset immediately restores the default values and recomputes using them.")
+st.sidebar.header("Global controls")
+view = st.sidebar.selectbox("Displayed region", ("Inner planets", "To Jupiter", "All planets"), index=1)
+total_years = st.sidebar.slider("Simulated time [yr]", min_value=1.0, max_value=250.0, value=12.0, step=1.0)
+dt_days = st.sidebar.slider("RK4 time step [days]", min_value=1.0, max_value=30.0, value=5.0, step=1.0)
+frame_stride = st.sidebar.slider("Integration steps per displayed frame", min_value=1, max_value=50, value=4, step=1)
+trail_frames = st.sidebar.slider("Trail length [displayed frames]", min_value=5, max_value=300, value=80, step=5)
 
-st.sidebar.header("Controls")
-st.sidebar.info("Change parameters, then click **Apply and recompute**. This avoids slow recomputation while dragging sliders.")
-
-with st.sidebar.form("parameter_form", clear_on_submit=False):
-    st.subheader("Main controls")
-    st.selectbox("Displayed region", ("Inner planets", "To Jupiter", "All planets"), key=FORM_KEYS["view"])
-    st.slider("Simulated time [yr]", 0.5, 250.0, key=FORM_KEYS["total_years"], step=0.5)
-    st.slider("RK4 time step [days]", 0.25, 20.0, key=FORM_KEYS["dt_days"], step=0.25)
-    st.slider("Stored trajectory stride [RK4 steps]", 1, 20, key=FORM_KEYS["stored_stride"], step=1)
-
-    st.subheader("Animation performance")
-    st.checkbox("Show smooth orbit curves", key=FORM_KEYS["show_orbit_lines"])
-    st.slider("Max points per orbit curve", 200, 5000, key=FORM_KEYS["orbit_max_points"], step=100)
-    st.slider("Max browser animation frames", 30, 1200, key=FORM_KEYS["max_animation_frames"], step=30)
-    st.slider("Animation frame duration [ms]", 10, 200, key=FORM_KEYS["frame_duration_ms"], step=5)
-
-    st.subheader("1PN parameters")
-    st.slider("log10(c [AU/yr])", 1.0, 6.0, key=FORM_KEYS["log10_c"], step=0.05)
-    st.slider("log10(1PN multiplier)", -3.0, 6.0, key=FORM_KEYS["pn_log10"], step=0.1)
-
-    st.subheader("Display sizes")
-    st.slider("Planet size compression gamma", 0.05, 0.80, key=FORM_KEYS["size_gamma"], step=0.05)
-    st.slider("Sun marker diameter [px]", 1.0, 18.0, key=FORM_KEYS["sun_marker"], step=0.5)
-    st.slider("Minimum planet diameter [px]", 2.0, 16.0, key=FORM_KEYS["planet_min"], step=0.5)
-    st.slider("Largest planet diameter [px]", 4.0, 30.0, key=FORM_KEYS["planet_max"], step=0.5)
-    st.slider("Orbit line width [px]", 1.0, 6.0, key=FORM_KEYS["line_width"], step=0.5)
-    st.slider("Body marker opacity", 0.30, 1.00, key=FORM_KEYS["marker_opacity"], step=0.05)
-    st.checkbox("Show body labels", key=FORM_KEYS["show_labels"])
-
-    st.subheader("Mass scaling")
-    st.slider("Sun: log10(M/M_real)", -3.0, 3.0, key=FORM_KEYS["sun_mass_log10"], step=0.1)
-    with st.expander("Individual planet masses", expanded=False):
-        for name in PLANET_NAMES:
-            st.slider(f"{name}: log10(M/M_real)", -3.0, 6.0, key=FORM_KEYS[f"mass_{name}"], step=0.1)
-
-    st.subheader("Distance scaling")
-    with st.expander("Individual planet distances", expanded=False):
-        for name in PLANET_NAMES:
-            st.slider(f"{name}: a/a_real", 0.10, 5.00, key=FORM_KEYS[f"dist_{name}"], step=0.05)
-
-    apply_clicked = st.form_submit_button("Apply and recompute", use_container_width=True, type="primary")
-
-if apply_clicked:
-    st.session_state["applied_params"] = collect_form_params()
-
-p = st.session_state["applied_params"]
-view = str(p["view"])
-total_years = float(p["total_years"])
-dt_days = float(p["dt_days"])
-stored_stride = int(p["stored_stride"])
-show_orbit_lines = bool(p["show_orbit_lines"])
-orbit_max_points = int(p["orbit_max_points"])
-max_animation_frames = int(p["max_animation_frames"])
-frame_duration_ms = int(p["frame_duration_ms"])
-log10_c = float(p["log10_c"])
+st.sidebar.header("1PN parameters")
+log10_c = st.sidebar.slider("log10(c [AU/yr])", min_value=1.0, max_value=6.0, value=math.log10(C_REAL_AU_PER_YR), step=0.05)
 c_value = 10.0 ** log10_c
-pn_log10 = float(p["pn_log10"])
-size_gamma = float(p["size_gamma"])
-sun_marker = float(p["sun_marker"])
-planet_min = float(p["planet_min"])
-planet_max = float(p["planet_max"])
-line_width = float(p["line_width"])
-marker_opacity = float(p["marker_opacity"])
-show_labels = bool(p["show_labels"])
-sun_mass_log10 = float(p["sun_mass_log10"])
-planet_mass_log10 = [float(p[f"mass_{name}"]) for name in PLANET_NAMES]
-planet_distance_scale = [float(p[f"dist_{name}"]) for name in PLANET_NAMES]
-
-st.sidebar.header("Applied values")
-st.sidebar.caption(f"Region: {view}")
 st.sidebar.caption(f"c = {c_value:,.1f} AU/yr; physical c ≈ {C_REAL_AU_PER_YR:,.1f} AU/yr")
+pn_log10 = st.sidebar.slider("log10(1PN multiplier)", min_value=-3.0, max_value=6.0, value=0.0, step=0.1)
 st.sidebar.caption(f"1PN multiplier = {10.0 ** pn_log10:.3g}")
 
-# Safety limits to avoid generating unreasonably large figures on Streamlit Cloud.
-n_steps = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR)))
-stored_frames = int(math.ceil(n_steps / max(stored_stride, 1))) + 1
-st.sidebar.caption(f"RK4 steps after Apply: {n_steps:,}; stored frames: about {stored_frames:,}.")
+st.sidebar.header("Display sizes")
+size_gamma = st.sidebar.slider("Planet size compression gamma", 0.05, 0.80, 0.25, 0.05)
+sun_marker = st.sidebar.slider("Sun marker diameter [px]", 2.0, 20.0, 7.0, 0.5)
+planet_min = st.sidebar.slider("Minimum planet diameter [px]", 3.0, 14.0, 7.0, 0.5)
+planet_max = st.sidebar.slider("Largest planet diameter [px]", 5.0, 25.0, 13.0, 0.5)
 
-if n_steps > 65_000:
-    st.error("Too many RK4 steps. Increase RK4 time step or shorten simulated time.")
-    st.stop()
-if stored_frames > 25_000:
-    st.error("Too many stored frames. Increase stored trajectory stride or shorten simulated time.")
+st.sidebar.header("Mass scaling")
+sun_mass_log10 = st.sidebar.slider("Sun: log10(M/M_real)", -3.0, 3.0, 0.0, 0.1)
+planet_mass_log10 = []
+with st.sidebar.expander("Individual planet masses", expanded=False):
+    for name in PLANET_NAMES:
+        planet_mass_log10.append(st.slider(f"{name}: log10(M/M_real)", -3.0, 6.0, 0.0, 0.1, key=f"mass_{name}"))
+
+planet_distance_scale = []
+with st.sidebar.expander("Individual planet distances", expanded=False):
+    for name in PLANET_NAMES:
+        planet_distance_scale.append(st.slider(f"{name}: a/a_real", 0.10, 5.00, 1.00, 0.05, key=f"dist_{name}"))
+
+st.sidebar.header("Animation")
+frame_estimate = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR) / max(frame_stride, 1))) + 1
+n_step_estimate = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR)))
+st.sidebar.caption(f"Internal RK4 steps: {n_step_estimate:,}; displayed frames: about {frame_estimate:,}")
+use_animation = st.sidebar.checkbox("Create Plotly Play animation", value=False)
+max_animation_frames = st.sidebar.slider("Max animation frames", 20, 250, 120, 10)
+
+if n_step_estimate > 20_000:
+    st.error(
+        "The selected time span and time step would require more than 20,000 RK4 steps. "
+        "Increase the time step, shorten the simulated time, or increase steps per displayed frame."
+    )
     st.stop()
 
-with st.spinner("Computing trajectories after the last applied parameter set..."):
-    times, frames_n, frames_p, masses, diag = simulate_cached(
+with st.spinner("Integrating Newton and 1PN trajectories..."):
+    times, frames_n, frames_p, masses, diag_n, diag_p = simulate_cached(
         total_years=float(total_years),
         dt_days=float(dt_days),
-        stored_stride=int(stored_stride),
+        frame_stride=int(frame_stride),
         sun_mass_log10=float(sun_mass_log10),
         planet_mass_log10=tuple(float(x) for x in planet_mass_log10),
         planet_distance_scale=tuple(float(x) for x in planet_distance_scale),
@@ -694,54 +558,60 @@ with st.spinner("Computing trajectories after the last applied parameter set..."
     )
 
 visible_indices = visible_body_indices(view)
-sizes = marker_sizes(visible_indices, size_gamma, sun_marker, planet_min, planet_max)
+current_frame = st.slider("Displayed time frame", 0, len(times) - 1, min(len(times) - 1, len(times) // 2))
 
-fig = make_fast_figure(
+sizes = marker_sizes(visible_indices, size_gamma, sun_marker, planet_min, planet_max)
+fig = make_figure(
     times=times,
     frames_n=frames_n,
     frames_p=frames_p,
+    frame_index=current_frame,
     visible_indices=visible_indices,
+    trail_frames=trail_frames,
     sizes=sizes,
-    show_labels=show_labels,
-    orbit_max_points=int(orbit_max_points),
-    max_animation_frames=int(max_animation_frames),
-    frame_duration_ms=int(frame_duration_ms),
-    line_width=float(line_width),
-    marker_opacity=float(marker_opacity),
-    show_orbit_lines=bool(show_orbit_lines),
+    animate=use_animation,
+    max_animation_frames=max_animation_frames,
 )
-
-st.plotly_chart(
-    fig,
-    use_container_width=True,
-    key="solar_system_plotly_chart",
-    config={"scrollZoom": True, "displaylogo": False, "responsive": True},
-)
-
-st.info(
-    "Change sliders in the sidebar and then click **Apply and recompute**.  The 3D camera/zoom is preserved as much as Plotly allows by using a fixed `uirevision`; avoiding repeated Streamlit reruns while dragging sliders also prevents many unwanted view resets."
-)
+st.plotly_chart(fig, use_container_width=True)
 
 col1, col2, col3, col4 = st.columns(4)
-col1.metric("Stored frames", f"{len(times):,}")
-col2.metric("Browser animation frames", f"{min(len(times), max_animation_frames):,}")
-col3.metric("1PN multiplier", f"{10.0 ** pn_log10:.3g}×")
-col4.metric("c", f"{c_value:,.0f} AU/yr")
+with col1:
+    st.metric("Displayed time", f"{times[current_frame]:.2f} yr")
+with col2:
+    st.metric("Sun mass scale", f"{10.0 ** sun_mass_log10:.3g}×")
+with col3:
+    st.metric("1PN multiplier", f"{10.0 ** pn_log10:.3g}×")
+with col4:
+    st.metric("c", f"{c_value:,.0f} AU/yr")
 
 st.subheader("Approximation diagnostics")
-d1, d2 = st.columns(2)
-d1.metric("max v/c", f"{diag['max_v_over_c']:.3e}")
-d2.metric("max GM/(rc²)", f"{diag['max_GM_over_rc2']:.3e}")
-if diag["max_v_over_c"] > 0.3 or diag["max_GM_over_rc2"] > 0.1:
-    st.warning("The selected parameters are outside the comfortable weak-field / slow-motion 1PN regime.")
+d1, d2, d3, d4 = st.columns(4)
+d1.metric("Newton max v/c", f"{diag_n['max_v_over_c']:.3e}")
+d2.metric("Newton max GM/(rc²)", f"{diag_n['max_GM_over_rc2']:.3e}")
+d3.metric("1PN max v/c", f"{diag_p['max_v_over_c']:.3e}")
+d4.metric("1PN max GM/(rc²)", f"{diag_p['max_GM_over_rc2']:.3e}")
 
-st.subheader("Current applied body parameters")
-rows = [{"body": "Sun", "mass scale": 10.0 ** sun_mass_log10, "distance scale": 0.0, "model mass [M_sun]": masses[0]}]
+if max(diag_n["max_v_over_c"], diag_p["max_v_over_c"]) > 0.3 or max(diag_n["max_GM_over_rc2"], diag_p["max_GM_over_rc2"]) > 0.1:
+    st.warning(
+        "The chosen parameters push the system outside the comfortable weak-field / slow-motion 1PN regime. "
+        "The visualization may still be interesting, but it should not be interpreted as a quantitatively valid relativistic model."
+    )
+
+st.subheader("Current body parameters")
+rows = []
+rows.append({"body": "Sun", "mass scale": 10.0 ** sun_mass_log10, "distance scale": 0.0, "model mass [M_sun]": masses[0]})
 for i, body in enumerate(BODIES[1:], start=1):
-    rows.append({"body": body.name, "mass scale": 10.0 ** planet_mass_log10[i - 1], "distance scale": planet_distance_scale[i - 1], "model mass [M_sun]": masses[i]})
+    rows.append(
+        {
+            "body": body.name,
+            "mass scale": 10.0 ** planet_mass_log10[i - 1],
+            "distance scale": planet_distance_scale[i - 1],
+            "model mass [M_sun]": masses[i],
+        }
+    )
 st.dataframe(rows, hide_index=True, use_container_width=True)
 
 st.caption(
-    "Performance tips: for public demos use 'Inner planets' or 'To Jupiter', keep Max browser animation frames around 200–450, and increase Max points per orbit curve only if the static orbit curves look polygonal after zooming. "
-    "The animation moves only body markers; the orbit curves are static precomputed trajectories. Marker diameters are visually compressed and are not plotted on the same AU scale as orbital distances."
+    "Marker diameters are visually compressed and are not plotted on the same linear AU scale as the orbital distances. "
+    "The compression preserves the ordering of body radii but is chosen so that both the Sun and the planets remain visible."
 )
