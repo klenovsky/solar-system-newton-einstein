@@ -3,9 +3,9 @@
 """
 Fast Streamlit web app: Solar-System Newton gravity vs pairwise 1PN approximation.
 
-Reset-enabled fixed animation version: Plotly 3D frames use redraw=True and fully specify
-the animated marker traces, which is required for reliable Scatter3d playback
-in browsers and Streamlit.
+Form-based fixed animation version: sidebar sliders are staged and trajectories
+are recomputed only when Apply and recompute is pressed. Plotly uses a fixed
+uirevision to better preserve camera/zoom across reruns.
 
 Run locally:
     streamlit run app.py
@@ -418,7 +418,6 @@ def make_fast_figure(
                     ),
                 ],
                 traces=[newton_marker_trace_index, pn_marker_trace_index],
-                layout=go.Layout(title_text=f"Solar-System model: t = {times[idx]:.2f} yr"),
             )
         )
     fig.frames = frames
@@ -430,6 +429,7 @@ def make_fast_figure(
         zaxis=dict(title="z [AU]", range=[axis_min, axis_max], showspikes=False),
         aspectmode="cube",
         camera=dict(eye=dict(x=1.35, y=1.35, z=0.85)),
+        uirevision="solar-system-camera",
     )
 
     # Slider steps for the animation.  Keep this client-side.
@@ -533,8 +533,39 @@ def reset_to_initial_values() -> None:
 # Streamlit UI
 # =============================================================================
 
+# =============================================================================
+# Streamlit UI
+# =============================================================================
+
 st.set_page_config(page_title="Solar System: Newton vs 1PN", layout="wide")
 initialize_default_state()
+
+# In this version, widget values are staged in a form.  The expensive numerical
+# integration uses only st.session_state["applied_params"].  Moving sliders in the
+# sidebar therefore does not recompute trajectories until the user explicitly
+# clicks Apply and recompute.
+
+FORM_KEYS = {key: f"w_{key}" for key in DEFAULT_UI_VALUES}
+
+
+def initialize_applied_and_widget_state() -> None:
+    if "applied_params" not in st.session_state:
+        st.session_state["applied_params"] = dict(DEFAULT_UI_VALUES)
+    for key, value in DEFAULT_UI_VALUES.items():
+        st.session_state.setdefault(FORM_KEYS[key], st.session_state["applied_params"].get(key, value))
+
+
+def reset_to_initial_values() -> None:
+    st.session_state["applied_params"] = dict(DEFAULT_UI_VALUES)
+    for key, value in DEFAULT_UI_VALUES.items():
+        st.session_state[FORM_KEYS[key]] = value
+
+
+def collect_form_params() -> dict[str, object]:
+    return {key: st.session_state[FORM_KEYS[key]] for key in DEFAULT_UI_VALUES}
+
+
+initialize_applied_and_widget_state()
 
 st.title("Solar-System motion: Newton gravity vs. Einstein GTR 1PN approximation")
 
@@ -547,9 +578,15 @@ gravity plus a pairwise two-body 1PN correction.  The model is designed for
 visualization, not as a date-specific JPL ephemeris and not as full numerical
 relativity.
 
-The fast web version precomputes the trajectories, draws the orbit curves once,
-and then animates only the planet markers inside Plotly.  This is much smoother
-than repeatedly rerunning Streamlit for every animation frame.
+Performance architecture of this version:
+
+- parameter widgets are inside a form;
+- moving sliders does not immediately recompute the trajectories;
+- the trajectories are recomputed only after **Apply and recompute**;
+- Plotly receives a fixed `uirevision`, which helps preserve the 3D camera/zoom
+  across Streamlit reruns;
+- animation frames update only the planet markers, while orbit curves remain
+  static.
         """
     )
     st.latex(r"\ddot{\mathbf r}_i=-\sum_{j\ne i}Gm_j\frac{\mathbf r_i-\mathbf r_j}{(|\mathbf r_i-\mathbf r_j|^2+\epsilon^2)^{3/2}}")
@@ -557,53 +594,85 @@ than repeatedly rerunning Streamlit for every animation frame.
 
 st.sidebar.header("Presets")
 st.sidebar.button("Reset to initial values", on_click=reset_to_initial_values, use_container_width=True)
-st.sidebar.caption("Restores the default Solar-System model, display settings, masses, distances, c and 1PN multiplier.")
+st.sidebar.caption("Reset immediately restores the default values and recomputes using them.")
 
-st.sidebar.header("Main controls")
-view = st.sidebar.selectbox("Displayed region", ("Inner planets", "To Jupiter", "All planets"), key="view")
-total_years = st.sidebar.slider("Simulated time [yr]", 0.5, 250.0, key="total_years", step=0.5)
-dt_days = st.sidebar.slider("RK4 time step [days]", 0.25, 20.0, key="dt_days", step=0.25)
-stored_stride = st.sidebar.slider("Stored trajectory stride [RK4 steps]", 1, 20, key="stored_stride", step=1)
+st.sidebar.header("Controls")
+st.sidebar.info("Change parameters, then click **Apply and recompute**. This avoids slow recomputation while dragging sliders.")
 
-st.sidebar.header("Animation performance")
-show_orbit_lines = st.sidebar.checkbox("Show smooth orbit curves", key="show_orbit_lines")
-orbit_max_points = st.sidebar.slider("Max points per orbit curve", 200, 5000, key="orbit_max_points", step=100)
-max_animation_frames = st.sidebar.slider("Max browser animation frames", 30, 1200, key="max_animation_frames", step=30)
-frame_duration_ms = st.sidebar.slider("Animation frame duration [ms]", 10, 200, key="frame_duration_ms", step=5)
-st.sidebar.caption("Fastest setting: fewer animation frames and fewer orbit-curve points. Smoothest orbit curves: more orbit-curve points.")
+with st.sidebar.form("parameter_form", clear_on_submit=False):
+    st.subheader("Main controls")
+    st.selectbox("Displayed region", ("Inner planets", "To Jupiter", "All planets"), key=FORM_KEYS["view"])
+    st.slider("Simulated time [yr]", 0.5, 250.0, key=FORM_KEYS["total_years"], step=0.5)
+    st.slider("RK4 time step [days]", 0.25, 20.0, key=FORM_KEYS["dt_days"], step=0.25)
+    st.slider("Stored trajectory stride [RK4 steps]", 1, 20, key=FORM_KEYS["stored_stride"], step=1)
 
-st.sidebar.header("1PN parameters")
-log10_c = st.sidebar.slider("log10(c [AU/yr])", 1.0, 6.0, key="log10_c", step=0.05)
+    st.subheader("Animation performance")
+    st.checkbox("Show smooth orbit curves", key=FORM_KEYS["show_orbit_lines"])
+    st.slider("Max points per orbit curve", 200, 5000, key=FORM_KEYS["orbit_max_points"], step=100)
+    st.slider("Max browser animation frames", 30, 1200, key=FORM_KEYS["max_animation_frames"], step=30)
+    st.slider("Animation frame duration [ms]", 10, 200, key=FORM_KEYS["frame_duration_ms"], step=5)
+
+    st.subheader("1PN parameters")
+    st.slider("log10(c [AU/yr])", 1.0, 6.0, key=FORM_KEYS["log10_c"], step=0.05)
+    st.slider("log10(1PN multiplier)", -3.0, 6.0, key=FORM_KEYS["pn_log10"], step=0.1)
+
+    st.subheader("Display sizes")
+    st.slider("Planet size compression gamma", 0.05, 0.80, key=FORM_KEYS["size_gamma"], step=0.05)
+    st.slider("Sun marker diameter [px]", 1.0, 18.0, key=FORM_KEYS["sun_marker"], step=0.5)
+    st.slider("Minimum planet diameter [px]", 2.0, 16.0, key=FORM_KEYS["planet_min"], step=0.5)
+    st.slider("Largest planet diameter [px]", 4.0, 30.0, key=FORM_KEYS["planet_max"], step=0.5)
+    st.slider("Orbit line width [px]", 1.0, 6.0, key=FORM_KEYS["line_width"], step=0.5)
+    st.slider("Body marker opacity", 0.30, 1.00, key=FORM_KEYS["marker_opacity"], step=0.05)
+    st.checkbox("Show body labels", key=FORM_KEYS["show_labels"])
+
+    st.subheader("Mass scaling")
+    st.slider("Sun: log10(M/M_real)", -3.0, 3.0, key=FORM_KEYS["sun_mass_log10"], step=0.1)
+    with st.expander("Individual planet masses", expanded=False):
+        for name in PLANET_NAMES:
+            st.slider(f"{name}: log10(M/M_real)", -3.0, 6.0, key=FORM_KEYS[f"mass_{name}"], step=0.1)
+
+    st.subheader("Distance scaling")
+    with st.expander("Individual planet distances", expanded=False):
+        for name in PLANET_NAMES:
+            st.slider(f"{name}: a/a_real", 0.10, 5.00, key=FORM_KEYS[f"dist_{name}"], step=0.05)
+
+    apply_clicked = st.form_submit_button("Apply and recompute", use_container_width=True, type="primary")
+
+if apply_clicked:
+    st.session_state["applied_params"] = collect_form_params()
+
+p = st.session_state["applied_params"]
+view = str(p["view"])
+total_years = float(p["total_years"])
+dt_days = float(p["dt_days"])
+stored_stride = int(p["stored_stride"])
+show_orbit_lines = bool(p["show_orbit_lines"])
+orbit_max_points = int(p["orbit_max_points"])
+max_animation_frames = int(p["max_animation_frames"])
+frame_duration_ms = int(p["frame_duration_ms"])
+log10_c = float(p["log10_c"])
 c_value = 10.0 ** log10_c
-pn_log10 = st.sidebar.slider("log10(1PN multiplier)", -3.0, 6.0, key="pn_log10", step=0.1)
+pn_log10 = float(p["pn_log10"])
+size_gamma = float(p["size_gamma"])
+sun_marker = float(p["sun_marker"])
+planet_min = float(p["planet_min"])
+planet_max = float(p["planet_max"])
+line_width = float(p["line_width"])
+marker_opacity = float(p["marker_opacity"])
+show_labels = bool(p["show_labels"])
+sun_mass_log10 = float(p["sun_mass_log10"])
+planet_mass_log10 = [float(p[f"mass_{name}"]) for name in PLANET_NAMES]
+planet_distance_scale = [float(p[f"dist_{name}"]) for name in PLANET_NAMES]
+
+st.sidebar.header("Applied values")
+st.sidebar.caption(f"Region: {view}")
 st.sidebar.caption(f"c = {c_value:,.1f} AU/yr; physical c ≈ {C_REAL_AU_PER_YR:,.1f} AU/yr")
 st.sidebar.caption(f"1PN multiplier = {10.0 ** pn_log10:.3g}")
-
-st.sidebar.header("Display sizes")
-size_gamma = st.sidebar.slider("Planet size compression gamma", 0.05, 0.80, key="size_gamma", step=0.05)
-sun_marker = st.sidebar.slider("Sun marker diameter [px]", 1.0, 18.0, key="sun_marker", step=0.5)
-planet_min = st.sidebar.slider("Minimum planet diameter [px]", 2.0, 16.0, key="planet_min", step=0.5)
-planet_max = st.sidebar.slider("Largest planet diameter [px]", 4.0, 30.0, key="planet_max", step=0.5)
-line_width = st.sidebar.slider("Orbit line width [px]", 1.0, 6.0, key="line_width", step=0.5)
-marker_opacity = st.sidebar.slider("Body marker opacity", 0.30, 1.00, key="marker_opacity", step=0.05)
-show_labels = st.sidebar.checkbox("Show body labels", key="show_labels")
-
-st.sidebar.header("Mass scaling")
-sun_mass_log10 = st.sidebar.slider("Sun: log10(M/M_real)", -3.0, 3.0, key="sun_mass_log10", step=0.1)
-planet_mass_log10: list[float] = []
-with st.sidebar.expander("Individual planet masses", expanded=False):
-    for name in PLANET_NAMES:
-        planet_mass_log10.append(st.slider(f"{name}: log10(M/M_real)", -3.0, 6.0, key=f"mass_{name}", step=0.1))
-
-planet_distance_scale: list[float] = []
-with st.sidebar.expander("Individual planet distances", expanded=False):
-    for name in PLANET_NAMES:
-        planet_distance_scale.append(st.slider(f"{name}: a/a_real", 0.10, 5.00, key=f"dist_{name}", step=0.05))
 
 # Safety limits to avoid generating unreasonably large figures on Streamlit Cloud.
 n_steps = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR)))
 stored_frames = int(math.ceil(n_steps / max(stored_stride, 1))) + 1
-st.sidebar.caption(f"RK4 steps: {n_steps:,}; stored trajectory frames: about {stored_frames:,}.")
+st.sidebar.caption(f"RK4 steps after Apply: {n_steps:,}; stored frames: about {stored_frames:,}.")
 
 if n_steps > 65_000:
     st.error("Too many RK4 steps. Increase RK4 time step or shorten simulated time.")
@@ -612,7 +681,7 @@ if stored_frames > 25_000:
     st.error("Too many stored frames. Increase stored trajectory stride or shorten simulated time.")
     st.stop()
 
-with st.spinner("Computing trajectories..."):
+with st.spinner("Computing trajectories after the last applied parameter set..."):
     times, frames_n, frames_p, masses, diag = simulate_cached(
         total_years=float(total_years),
         dt_days=float(dt_days),
@@ -642,11 +711,15 @@ fig = make_fast_figure(
     show_orbit_lines=bool(show_orbit_lines),
 )
 
-st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True, "displaylogo": False})
+st.plotly_chart(
+    fig,
+    use_container_width=True,
+    key="solar_system_plotly_chart",
+    config={"scrollZoom": True, "displaylogo": False, "responsive": True},
+)
 
 st.info(
-    "Use the Plotly ▶ Play button above the left plot. This fixed version uses Plotly 3D redraw frames, "
-    "so the planet markers should visibly move while the precomputed orbit curves remain static."
+    "Change sliders in the sidebar and then click **Apply and recompute**.  The 3D camera/zoom is preserved as much as Plotly allows by using a fixed `uirevision`; avoiding repeated Streamlit reruns while dragging sliders also prevents many unwanted view resets."
 )
 
 col1, col2, col3, col4 = st.columns(4)
@@ -662,13 +735,13 @@ d2.metric("max GM/(rc²)", f"{diag['max_GM_over_rc2']:.3e}")
 if diag["max_v_over_c"] > 0.3 or diag["max_GM_over_rc2"] > 0.1:
     st.warning("The selected parameters are outside the comfortable weak-field / slow-motion 1PN regime.")
 
-st.subheader("Current body parameters")
+st.subheader("Current applied body parameters")
 rows = [{"body": "Sun", "mass scale": 10.0 ** sun_mass_log10, "distance scale": 0.0, "model mass [M_sun]": masses[0]}]
 for i, body in enumerate(BODIES[1:], start=1):
     rows.append({"body": body.name, "mass scale": 10.0 ** planet_mass_log10[i - 1], "distance scale": planet_distance_scale[i - 1], "model mass [M_sun]": masses[i]})
 st.dataframe(rows, hide_index=True, use_container_width=True)
 
 st.caption(
-    "Performance tips: lower 'Max browser animation frames' for faster playback; increase 'Max points per orbit curve' only if the static orbit curves look polygonal after zooming. "
+    "Performance tips: for public demos use 'Inner planets' or 'To Jupiter', keep Max browser animation frames around 200–450, and increase Max points per orbit curve only if the static orbit curves look polygonal after zooming. "
     "The animation moves only body markers; the orbit curves are static precomputed trajectories. Marker diameters are visually compressed and are not plotted on the same AU scale as orbital distances."
 )

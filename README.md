@@ -1,47 +1,20 @@
 # Solar-System motion: Newton gravity vs. Einstein GTR 1PN approximation
 
-Fast Streamlit + Plotly web version, fixed for reliable 3D animation playback.
+Fast Streamlit + Plotly web application.
 
-This version is optimized for Streamlit Community Cloud:
+This version is optimized for Streamlit Cloud usability:
 
-- trajectories are precomputed once after parameter changes,
-- orbit curves are static Plotly traces,
-- only body markers are animated inside the browser, using Plotly 3D frames with redraw enabled,
-- no `streamlit-autorefresh` loop is used.
+- all controls are inside a sidebar form;
+- dragging sliders does **not** recompute trajectories;
+- click **Apply and recompute** to update the simulation;
+- Plotly uses a fixed `uirevision` to preserve the 3D camera/zoom as much as possible across reruns;
+- browser-side animation moves only the body markers, while orbit curves are static.
 
-This avoids expensive Streamlit reruns during playback.
-
-## Local run
+Run locally:
 
 ```bash
-python3 -m venv venv
-source venv/bin/activate
 pip install -r requirements.txt
 streamlit run app.py
 ```
 
-## Deployment
-
-Upload these files to the root of a GitHub repository:
-
-```text
-app.py
-requirements.txt
-README.md
-```
-
-Deploy the repository on Streamlit Community Cloud with `app.py` as the main file.
-
-## Notes
-
-The model is educational.  It is not a date-specific JPL ephemeris and it is not full numerical relativity.  The right panel adds a pairwise two-body 1PN correction to Newtonian gravity.
-
-
-## Animation fix
-
-If an older deployed version showed static planets when pressing Play, replace `app.py` with this version. The previous version used `redraw=False`, which is unreliable for `Scatter3d` WebGL traces in some browsers/Streamlit deployments. This version uses `redraw=True` and fully specifies the animated marker traces in each Plotly frame.
-
-
-## Reset button
-
-The sidebar contains **Reset to initial values**, which restores the default model, display settings, masses, distances, speed of light, and 1PN multiplier.
+The model is a simplified circular-orbit Solar-System demonstration. It is not a date-specific JPL ephemeris and not full numerical relativity. The right panel uses a pairwise two-body 1PN correction.
