@@ -486,6 +486,55 @@ def make_figure(
     return fig
 
 
+
+# =============================================================================
+# UI defaults and reset handling
+# =============================================================================
+
+VIEW_OPTIONS = ("Inner planets", "To Jupiter", "All planets")
+
+DEFAULT_UI_VALUES: dict[str, object] = {
+    "view": "To Jupiter",
+    "total_years": 12.0,
+    "dt_days": 5.0,
+    "frame_stride": 4,
+    "trail_frames": 80,
+    "log10_c": math.log10(C_REAL_AU_PER_YR),
+    "pn_log10": 0.0,
+    "size_gamma": 0.25,
+    "sun_marker": 7.0,
+    "planet_min": 7.0,
+    "planet_max": 13.0,
+    "sun_mass_log10": 0.0,
+    "live_interval_ms": 250,
+    "frames_per_refresh": 2,
+    "loop_playback": True,
+    "use_animation": True,
+    "max_animation_frames": 120,
+}
+
+for _planet_name in PLANET_NAMES:
+    DEFAULT_UI_VALUES[f"mass_{_planet_name}"] = 0.0
+    DEFAULT_UI_VALUES[f"dist_{_planet_name}"] = 1.0
+
+
+def ensure_default_session_state() -> None:
+    """Initialize missing Streamlit widget keys from the app defaults."""
+    for key, value in DEFAULT_UI_VALUES.items():
+        st.session_state.setdefault(key, value)
+    st.session_state.setdefault("live_frame", 0)
+    st.session_state.setdefault("running", False)
+
+
+def reset_to_initial_values() -> None:
+    """Reset all visible controls and playback state to their default values."""
+    for key, value in DEFAULT_UI_VALUES.items():
+        st.session_state[key] = value
+    st.session_state["live_frame"] = 0
+    st.session_state["running"] = False
+    st.session_state.pop("last_parameter_signature", None)
+
+
 # =============================================================================
 # Streamlit UI
 # =============================================================================
@@ -493,51 +542,178 @@ def make_figure(
 st.set_page_config(page_title="Solar System: Newton vs 1PN", layout="wide")
 st.title("Solar-System motion: Newton gravity vs. Einstein GTR 1PN approximation")
 
+ensure_default_session_state()
+
+st.sidebar.header("Presets")
+if st.sidebar.button("Reset to initial values", use_container_width=True):
+    reset_to_initial_values()
+    st.rerun()
+
 with st.expander("What this app computes", expanded=False):
     st.markdown(
         """
-The app integrates a simplified Solar-System model in astronomical units.  The
-left panel solves Newtonian N-body gravity.  The right panel solves Newtonian
-gravity plus a pairwise two-body 1PN correction.  The 1PN correction is a
-weak-field, slow-motion approximation inspired by general relativity; it is not
-a full Einstein-Infeld-Hoffmann many-body ephemeris and not a JPL Horizons
-replacement.
+This app integrates a simplified three-dimensional Solar-System model in the
+unit system
+
+- length: astronomical unit, AU,
+- time: Julian year,
+- mass: solar mass, `M_sun`.
+
+In these units the gravitational constant is
         """
     )
-    st.latex(r"\ddot{\mathbf r}_i=-\sum_{j\ne i}Gm_j\frac{\mathbf r_i-\mathbf r_j}{\left(|\mathbf r_i-\mathbf r_j|^2+\epsilon^2\right)^{3/2}}")
-    st.latex(r"\mathbf a_i=\mathbf a_i^{\rm Newton}+\lambda_{\rm 1PN}\sum_{j\ne i}\mathbf a_{ij}^{\rm pairwise\;1PN}")
+    st.latex(r"G = 4\pi^2\;{\rm AU^3}\,{\rm M_\odot^{-1}}\,{\rm yr^{-2}}")
+    st.markdown(
+        """
+The physical speed of light is approximately
+        """
+    )
+    st.latex(r"c_{\rm phys}\simeq 63241.077\;{\rm AU\,yr^{-1}}")
+    st.markdown(
+        """
+The numerical body data are based on standard rounded planetary masses, radii
+and simple orbital elements.  The masses and radii follow the NASA/JPL Solar
+System Dynamics table of planetary physical parameters.  The orbital radii,
+inclinations and phases are used only to construct clean didactic initial
+conditions; the model is not a date-specific ephemeris.  JPL explicitly
+separates such approximate Keplerian-element calculations from high-precision
+Horizons ephemerides.
+
+### Initial conditions
+
+For each planet the app starts from a simplified circular orbit with radius
+        """
+    )
+    st.latex(r"r_i = a_i\,s_i")
+    st.markdown(
+        """
+where `a_i` is the reference semi-major axis and `s_i` is the user-controlled
+`a/a_real` distance scale.  The corresponding tangential circular speed is
+        """
+    )
+    st.latex(r"v_i = \sqrt{\frac{G\left(M_\odot^{\ast}+m_i^{\ast}\right)}{r_i}}")
+    st.markdown(
+        """
+where starred quantities denote the masses after user scaling.  The orbital
+plane is then tilted by the listed inclination.  Finally, positions and
+velocities are transformed to the barycentric frame, so that the initial center
+of mass is at rest.
+
+### Newtonian panel
+
+The left panel solves the softened Newtonian N-body equations
+        """
+    )
+    st.latex(r"\dot{\mathbf r}_i=\mathbf v_i")
+    st.latex(r"\dot{\mathbf v}_i=-\sum_{j\ne i}Gm_j\frac{\mathbf r_i-\mathbf r_j}{\left(|\mathbf r_i-\mathbf r_j|^2+\epsilon^2\right)^{3/2}}")
+    st.markdown(
+        """
+The small value `epsilon = 1e-6 AU` is a numerical softening length.  It avoids
+singular accelerations during unrealistically close encounters created by
+extreme slider settings.  It is not a new physical force.
+
+### Einstein GTR 1PN approximation panel
+
+The right panel solves Newtonian gravity plus a pairwise first
+post-Newtonian correction.  For a pair `i,j` the code uses the standard
+relative two-body 1PN correction in harmonic-coordinate form,
+        """
+    )
+    st.latex(r"\mathbf a_{ij}^{\rm rel}=\mathbf a_{ij}^{\rm N}+\lambda_{\rm 1PN}\,\mathbf a_{ij}^{\rm 1PN}")
+    st.latex(r"\mathbf a_{ij}^{\rm 1PN}=\frac{G M}{c^2 r^2}\left\{\mathbf n\left[(4+2\eta)\frac{GM}{r}-(1+3\eta)v^2+\frac{3}{2}\eta\dot r^2\right]+(4-2\eta)\dot r\,\mathbf v\right\}")
+    st.markdown(
+        """
+with
+        """
+    )
+    st.latex(r"M=m_i+m_j,\qquad \eta=\frac{m_i m_j}{M^2},\qquad \mathbf n=\frac{\mathbf r_i-\mathbf r_j}{r},\qquad \mathbf v=\mathbf v_i-\mathbf v_j,\qquad \dot r=\mathbf n\cdot\mathbf v")
+    st.markdown(
+        """
+The pairwise relative correction is split between the two bodies so that the
+pair center-of-mass acceleration remains zero,
+        """
+    )
+    st.latex(r"\mathbf a_i^{\rm corr}=\frac{m_j}{m_i+m_j}\mathbf a_{ij}^{\rm 1PN},\qquad \mathbf a_j^{\rm corr}=-\frac{m_i}{m_i+m_j}\mathbf a_{ij}^{\rm 1PN}")
+    st.markdown(
+        """
+The slider `1PN multiplier` sets `lambda_1PN`.  The physically natural value is
+`lambda_1PN = 1`.  Larger values intentionally magnify the relativistic term so
+that the difference from Newtonian motion is easier to see.
+
+This is not a full Einstein-Infeld-Hoffmann N-body integration.  The exact 1PN
+many-body equations contain additional three-body cross terms.  Therefore the
+right panel should be read as a visualization of pairwise two-body 1PN effects,
+not as a precision relativistic ephemeris.
+
+### Time integration
+
+Both panels are advanced with the classical fourth-order Runge-Kutta method.
+For the first-order system `dy/dt = f(y)`, one time step is
+        """
+    )
+    st.latex(r"\mathbf y_{n+1}=\mathbf y_n+\frac{\Delta t}{6}\left(\mathbf k_1+2\mathbf k_2+2\mathbf k_3+\mathbf k_4\right)")
+    st.latex(r"\mathbf k_1=f(\mathbf y_n),\quad \mathbf k_2=f(\mathbf y_n+\tfrac{\Delta t}{2}\mathbf k_1),\quad \mathbf k_3=f(\mathbf y_n+\tfrac{\Delta t}{2}\mathbf k_2),\quad \mathbf k_4=f(\mathbf y_n+\Delta t\mathbf k_3)")
+    st.markdown(
+        """
+RK4 is convenient and accurate for short educational integrations, but it is not
+symplectic.  Very long integrations or very close encounters should therefore
+not be interpreted as high-precision Solar-System dynamics.
+
+### Validity diagnostics
+
+The displayed diagnostics estimate the two small parameters that should remain
+small for the 1PN interpretation:
+        """
+    )
+    st.latex(r"\max_i\frac{|\mathbf v_i|}{c}\ll 1,\qquad \max_{i<j}\frac{Gm_i}{r_{ij}c^2}\ll 1")
+    st.markdown(
+        """
+If these numbers become too large, the animation can still be interesting, but
+it is no longer a quantitatively reliable weak-field, slow-motion relativistic
+model.
+
+### References
+
+- NASA/JPL Solar System Dynamics, [Planetary Physical Parameters](https://ssd.jpl.nasa.gov/planets/phys_par.html).
+- NASA/JPL Solar System Dynamics, [Approximate Positions of the Planets](https://ssd.jpl.nasa.gov/planets/approx_pos.html).
+- A. Einstein, L. Infeld and B. Hoffmann, *The Gravitational Equations and the Problem of Motion*, Annals of Mathematics **39**, 65--100 (1938), [DOI: 10.2307/1968714](https://doi.org/10.2307/1968714).
+- L. Blanchet, *Gravitational Radiation from Post-Newtonian Sources and Inspiralling Compact Binaries*, Living Reviews in Relativity **17**, 2 (2014), [DOI: 10.12942/lrr-2014-2](https://doi.org/10.12942/lrr-2014-2).
+- J. C. Butcher, *Numerical methods for ordinary differential equations in the 20th century*, Journal of Computational and Applied Mathematics **125**, 1--29 (2000), [DOI: 10.1016/S0377-0427(00)00455-6](https://doi.org/10.1016/S0377-0427(00)00455-6).
+- W. Dehnen, *Towards optimal softening in three-dimensional N-body codes -- I. Minimizing the force error*, MNRAS **324**, 273--291 (2001), [DOI: 10.1046/j.1365-8711.2001.04237.x](https://doi.org/10.1046/j.1365-8711.2001.04237.x).
+        """
+    )
 
 st.sidebar.header("Global controls")
-view = st.sidebar.selectbox("Displayed region", ("Inner planets", "To Jupiter", "All planets"), index=1)
-total_years = st.sidebar.slider("Simulated time [yr]", min_value=1.0, max_value=250.0, value=12.0, step=1.0)
-dt_days = st.sidebar.slider("RK4 time step [days]", min_value=1.0, max_value=30.0, value=5.0, step=1.0)
-frame_stride = st.sidebar.slider("Integration steps per displayed frame", min_value=1, max_value=50, value=4, step=1)
-trail_frames = st.sidebar.slider("Trail length [displayed frames]", min_value=5, max_value=300, value=80, step=5)
+view = st.sidebar.selectbox("Displayed region", VIEW_OPTIONS, key="view")
+total_years = st.sidebar.slider("Simulated time [yr]", min_value=1.0, max_value=250.0, step=1.0, key="total_years")
+dt_days = st.sidebar.slider("RK4 time step [days]", min_value=1.0, max_value=30.0, step=1.0, key="dt_days")
+frame_stride = st.sidebar.slider("Integration steps per displayed frame", min_value=1, max_value=50, step=1, key="frame_stride")
+trail_frames = st.sidebar.slider("Trail length [displayed frames]", min_value=5, max_value=300, step=5, key="trail_frames")
 
 st.sidebar.header("1PN parameters")
-log10_c = st.sidebar.slider("log10(c [AU/yr])", min_value=1.0, max_value=6.0, value=math.log10(C_REAL_AU_PER_YR), step=0.05)
+log10_c = st.sidebar.slider("log10(c [AU/yr])", min_value=1.0, max_value=6.0, step=0.05, key="log10_c")
 c_value = 10.0 ** log10_c
 st.sidebar.caption(f"c = {c_value:,.1f} AU/yr; physical c ≈ {C_REAL_AU_PER_YR:,.1f} AU/yr")
-pn_log10 = st.sidebar.slider("log10(1PN multiplier)", min_value=-3.0, max_value=6.0, value=0.0, step=0.1)
+pn_log10 = st.sidebar.slider("log10(1PN multiplier)", min_value=-3.0, max_value=6.0, step=0.1, key="pn_log10")
 st.sidebar.caption(f"1PN multiplier = {10.0 ** pn_log10:.3g}")
 
 st.sidebar.header("Display sizes")
-size_gamma = st.sidebar.slider("Planet size compression gamma", 0.05, 0.80, 0.25, 0.05)
-sun_marker = st.sidebar.slider("Sun marker diameter [px]", 2.0, 20.0, 7.0, 0.5)
-planet_min = st.sidebar.slider("Minimum planet diameter [px]", 3.0, 14.0, 7.0, 0.5)
-planet_max = st.sidebar.slider("Largest planet diameter [px]", 5.0, 25.0, 13.0, 0.5)
+size_gamma = st.sidebar.slider("Planet size compression gamma", 0.05, 0.80, step=0.05, key="size_gamma")
+sun_marker = st.sidebar.slider("Sun marker diameter [px]", 2.0, 20.0, step=0.5, key="sun_marker")
+planet_min = st.sidebar.slider("Minimum planet diameter [px]", 3.0, 14.0, step=0.5, key="planet_min")
+planet_max = st.sidebar.slider("Largest planet diameter [px]", 5.0, 25.0, step=0.5, key="planet_max")
 
 st.sidebar.header("Mass scaling")
-sun_mass_log10 = st.sidebar.slider("Sun: log10(M/M_real)", -3.0, 3.0, 0.0, 0.1)
+sun_mass_log10 = st.sidebar.slider("Sun: log10(M/M_real)", -3.0, 3.0, step=0.1, key="sun_mass_log10")
 planet_mass_log10 = []
 with st.sidebar.expander("Individual planet masses", expanded=False):
     for name in PLANET_NAMES:
-        planet_mass_log10.append(st.slider(f"{name}: log10(M/M_real)", -3.0, 6.0, 0.0, 0.1, key=f"mass_{name}"))
+        planet_mass_log10.append(st.slider(f"{name}: log10(M/M_real)", -3.0, 6.0, step=0.1, key=f"mass_{name}"))
 
 planet_distance_scale = []
 with st.sidebar.expander("Individual planet distances", expanded=False):
     for name in PLANET_NAMES:
-        planet_distance_scale.append(st.slider(f"{name}: a/a_real", 0.10, 5.00, 1.00, 0.05, key=f"dist_{name}"))
+        planet_distance_scale.append(st.slider(f"{name}: a/a_real", 0.10, 5.00, step=0.05, key=f"dist_{name}"))
 
 st.sidebar.header("Playback")
 frame_estimate = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR) / max(frame_stride, 1))) + 1
@@ -548,11 +724,11 @@ st.sidebar.caption(f"Internal RK4 steps: {n_step_estimate:,}; displayed frames: 
 # 1. Streamlit live playback: Start/Pause buttons advance the displayed frame by
 #    rerunning the app on a timer. This is the most visible option for web use.
 # 2. Plotly animation: a Play button is embedded directly inside the Plotly chart.
-live_interval_ms = st.sidebar.slider("Live playback refresh [ms]", 100, 2000, 250, 50)
-frames_per_refresh = st.sidebar.slider("Frames advanced per refresh", 1, 20, 2, 1)
-loop_playback = st.sidebar.checkbox("Loop live playback", value=True)
-use_animation = st.sidebar.checkbox("Also create Plotly chart Play button", value=True)
-max_animation_frames = st.sidebar.slider("Max Plotly animation frames", 20, 250, 120, 10)
+live_interval_ms = st.sidebar.slider("Live playback refresh [ms]", 100, 2000, step=50, key="live_interval_ms")
+frames_per_refresh = st.sidebar.slider("Frames advanced per refresh", 1, 20, step=1, key="frames_per_refresh")
+loop_playback = st.sidebar.checkbox("Loop live playback", key="loop_playback")
+use_animation = st.sidebar.checkbox("Also create Plotly chart Play button", key="use_animation")
+max_animation_frames = st.sidebar.slider("Max Plotly animation frames", 20, 250, step=10, key="max_animation_frames")
 
 if n_step_estimate > 20_000:
     st.error(

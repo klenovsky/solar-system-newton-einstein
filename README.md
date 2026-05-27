@@ -69,3 +69,17 @@ The public app address has the form:
 ```text
 https://your-custom-subdomain.streamlit.app
 ```
+
+## Changes in this version
+
+- Added a sidebar button **Reset to initial values**. It restores all physical, visual and playback controls to their defaults and resets the live playback frame.
+- Expanded the in-app **What this app computes** section with the model equations, unit definitions, 1PN validity conditions, numerical-integration method, model limitations, and literature/data references.
+
+## References shown in the app
+
+- NASA/JPL Solar System Dynamics, Planetary Physical Parameters: https://ssd.jpl.nasa.gov/planets/phys_par.html
+- NASA/JPL Solar System Dynamics, Approximate Positions of the Planets: https://ssd.jpl.nasa.gov/planets/approx_pos.html
+- A. Einstein, L. Infeld and B. Hoffmann, Annals of Mathematics 39, 65--100 (1938), DOI: 10.2307/1968714
+- L. Blanchet, Living Reviews in Relativity 17, 2 (2014), DOI: 10.12942/lrr-2014-2
+- J. C. Butcher, Journal of Computational and Applied Mathematics 125, 1--29 (2000), DOI: 10.1016/S0377-0427(00)00455-6
+- W. Dehnen, Monthly Notices of the Royal Astronomical Society 324, 273--291 (2001), DOI: 10.1046/j.1365-8711.2001.04237.x
