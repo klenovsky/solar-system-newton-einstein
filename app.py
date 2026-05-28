@@ -49,6 +49,7 @@ except Exception:
 G_MODEL = 4.0 * math.pi * math.pi       # AU^3 / (M_sun yr^2)
 C_REAL_AU_PER_YR = 63241.07708426628    # physical speed of light in AU/year
 SOFTENING_AU = 1.0e-6                   # purely numerical softening
+PLOT_UIREVISION = "solar-system-fixed-user-view"  # keep manual Plotly zoom/camera across reruns
 DAYS_PER_YEAR = 365.25
 SUN_RADIUS_KM = 696_340.0
 MSUN_KG = 1.98847e30
@@ -68,7 +69,7 @@ class BodyData:
 # Masses/radii are standard rounded planetary physical parameters.  The orbital
 # elements are simplified mean/semi-major-axis values used only to create
 # didactic initial conditions, not a date-specific ephemeris.
-BODIES: tuple[BodyData, ...] = (
+PLANET_BODIES: tuple[BodyData, ...] = (
     BodyData("Sun", 1.0, SUN_RADIUS_KM, 0.0, 0.0, 0.0, "gold"),
     BodyData("Mercury", 0.330103e24 / MSUN_KG, 2439.4, 0.38709927, 7.00497902, 252.25032350, "dimgray"),
     BodyData("Venus", 4.86731e24 / MSUN_KG, 6051.8, 0.72333566, 3.39467605, 181.97909950, "orange"),
@@ -80,9 +81,24 @@ BODIES: tuple[BodyData, ...] = (
     BodyData("Neptune", 102.4092e24 / MSUN_KG, 24622.0, 30.06992276, 1.77004347, -55.12002969, "purple"),
 )
 
-PLANET_NAMES = tuple(body.name for body in BODIES[1:])
+# Optional non-planet objects.  They are included in the state vector only when
+# the corresponding checkbox is enabled.  The radii are used only for visual
+# marker scaling; the trajectories are point-mass trajectories.
+VOYAGER_DRY_MASS_KG = 721.9
+VOYAGER_LAUNCH_MASS_KG = 815.0
+SL9_DEFAULT_MASS_KG = 1.0e13
+EXTRA_BODIES: tuple[BodyData, ...] = (
+    BodyData("Voyager 1-like probe", VOYAGER_DRY_MASS_KG / MSUN_KG, 0.005, 0.0, 0.0, 0.0, "white"),
+    BodyData("SL9-like Jupiter-impact comet", SL9_DEFAULT_MASS_KG / MSUN_KG, 0.5, 0.0, 0.0, 0.0, "lime"),
+)
+
+BODIES: tuple[BodyData, ...] = PLANET_BODIES + EXTRA_BODIES
+JUPITER_IDX = 5
+VOYAGER_IDX = len(PLANET_BODIES)
+SL9_IDX = len(PLANET_BODIES) + 1
+PLANET_NAMES = tuple(body.name for body in PLANET_BODIES[1:])
 BODY_NAMES = tuple(body.name for body in BODIES)
-PLANET_MAX_RADIUS_KM = max(body.radius_km for body in BODIES[1:])
+PLANET_MAX_RADIUS_KM = max(body.radius_km for body in PLANET_BODIES[1:])
 
 
 # =============================================================================
@@ -108,23 +124,37 @@ def build_initial_conditions(
     sun_mass_log10: float,
     planet_mass_log10: Sequence[float],
     planet_distance_scale: Sequence[float],
-) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Create simplified initial conditions for Sun + eight planets.
+    include_voyager: bool,
+    voyager_mass_log10kg: float,
+    voyager_velocity_jupiter_frame: Sequence[float],
+    include_sl9: bool,
+    sl9_mass_log10kg: float,
+    sl9_velocity_jupiter_frame: Sequence[float],
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Create simplified initial conditions for Sun + planets + optional objects.
 
     Planet positions start on tilted circular orbits with radii equal to
     semi_major_axis * distance_scale.  Velocities are circular Keplerian speeds
     for the scaled Sun mass and scaled planet mass.  This gives a clean didactic
     model, not a high-precision ephemeris for a specific date.
+
+    Optional objects are deliberately simplified:
+    - the Voyager 1-like probe starts near Jupiter and receives a user-set
+      velocity relative to Jupiter;
+    - the SL9-like comet starts just outside Jupiter and receives a user-set
+      velocity relative to Jupiter, by default aimed toward Jupiter.
     """
     n = len(BODIES)
     masses = np.zeros(n, dtype=float)
     pos = np.zeros((n, 3), dtype=float)
     vel = np.zeros((n, 3), dtype=float)
+    active = np.zeros(n, dtype=bool)
+    active[: len(PLANET_BODIES)] = True
 
     sun_factor = 10.0 ** float(sun_mass_log10)
-    masses[0] = max(sun_factor, 1.0e-15) * BODIES[0].mass_msun
+    masses[0] = max(sun_factor, 1.0e-15) * PLANET_BODIES[0].mass_msun
 
-    for i, body in enumerate(BODIES[1:], start=1):
+    for i, body in enumerate(PLANET_BODIES[1:], start=1):
         m_factor = 10.0 ** float(planet_mass_log10[i - 1])
         d_factor = max(float(planet_distance_scale[i - 1]), 1.0e-4)
         masses[i] = max(m_factor, 0.0) * body.mass_msun
@@ -142,17 +172,44 @@ def build_initial_conditions(
         pos[i] = rot @ local_pos
         vel[i] = rot @ local_vel
 
+    # Jupiter-based insertion points for optional small bodies.  This is a
+    # didactic setup, not a reconstructed Voyager launch/flyby trajectory and
+    # not a reconstructed Shoemaker-Levy 9 pre-impact ephemeris.
+    jpos = pos[JUPITER_IDX].copy()
+    jvel = vel[JUPITER_IDX].copy()
+    jnorm = float(np.linalg.norm(jpos))
+    if jnorm > 0.0:
+        rhat_j = jpos / jnorm
+    else:
+        rhat_j = np.array((1.0, 0.0, 0.0), dtype=float)
+
+    if include_voyager:
+        masses[VOYAGER_IDX] = (10.0 ** float(voyager_mass_log10kg)) / MSUN_KG
+        active[VOYAGER_IDX] = True
+        pos[VOYAGER_IDX] = jpos + 0.15 * rhat_j
+        vel[VOYAGER_IDX] = jvel + np.asarray(voyager_velocity_jupiter_frame, dtype=float)
+
+    if include_sl9:
+        masses[SL9_IDX] = (10.0 ** float(sl9_mass_log10kg)) / MSUN_KG
+        active[SL9_IDX] = True
+        pos[SL9_IDX] = jpos + 0.25 * rhat_j
+        vel[SL9_IDX] = jvel + np.asarray(sl9_velocity_jupiter_frame, dtype=float)
+
     pos, vel = barycentric_transform(pos, vel, masses)
-    return pos, vel, masses
+    return pos, vel, masses, active
 
 
-def acceleration_newton(pos: np.ndarray, masses: np.ndarray) -> np.ndarray:
+def acceleration_newton(pos: np.ndarray, masses: np.ndarray, active_mask: np.ndarray | None = None) -> np.ndarray:
     """Newtonian N-body acceleration with a tiny numerical softening."""
     n = len(masses)
     acc = np.zeros_like(pos)
+    if active_mask is None:
+        active_mask = np.ones(n, dtype=bool)
     for i in range(n):
+        if not bool(active_mask[i]):
+            continue
         for j in range(n):
-            if i == j:
+            if i == j or not bool(active_mask[j]) or masses[j] <= 0.0:
                 continue
             dr = pos[i] - pos[j]
             r2 = float(np.dot(dr, dr)) + SOFTENING_AU * SOFTENING_AU
@@ -167,18 +224,22 @@ def acceleration_pairwise_1pn(
     masses: np.ndarray,
     c_au_per_year: float,
     pn_multiplier: float,
+    active_mask: np.ndarray | None = None,
 ) -> np.ndarray:
     """Newtonian N-body acceleration plus pairwise two-body 1PN corrections.
 
-    For each pair i,j the standard relative two-body 1PN correction is computed
-    in harmonic-coordinate form and split between the two bodies so that the
-    pair center-of-mass acceleration remains zero.
+    For each active pair i,j the standard relative two-body 1PN correction is
+    computed in harmonic-coordinate form and split between the two bodies so
+    that the pair center-of-mass acceleration remains zero.
 
     This is useful pedagogically, especially for a Sun-dominated system, but it
     is not the full Einstein-Infeld-Hoffmann N-body equation because the genuine
     1PN three-body terms are not included.
     """
-    acc = acceleration_newton(pos, masses)
+    n_bodies = len(masses)
+    if active_mask is None:
+        active_mask = np.ones(n_bodies, dtype=bool)
+    acc = acceleration_newton(pos, masses, active_mask)
     if pn_multiplier == 0.0:
         return acc
 
@@ -186,9 +247,12 @@ def acceleration_pairwise_1pn(
     if c2 <= 0.0:
         return acc
 
-    n_bodies = len(masses)
     for i in range(n_bodies):
+        if not bool(active_mask[i]):
+            continue
         for j in range(i + 1, n_bodies):
+            if not bool(active_mask[j]):
+                continue
             mi = masses[i]
             mj = masses[j]
             mtot = mi + mj
@@ -219,38 +283,66 @@ def acceleration_pairwise_1pn(
     return acc
 
 
-def rhs(state: np.ndarray, masses: np.ndarray, model: str, c_value: float, pn_multiplier: float) -> np.ndarray:
+def rhs(
+    state: np.ndarray,
+    masses: np.ndarray,
+    active_mask: np.ndarray,
+    model: str,
+    c_value: float,
+    pn_multiplier: float,
+) -> np.ndarray:
     """Right-hand side of the first-order ODE system."""
     n = len(masses)
     pos = state[: 3 * n].reshape((n, 3))
     vel = state[3 * n :].reshape((n, 3))
     if model == "newton":
-        acc = acceleration_newton(pos, masses)
+        acc = acceleration_newton(pos, masses, active_mask)
     elif model == "1pn":
-        acc = acceleration_pairwise_1pn(pos, vel, masses, c_value, pn_multiplier)
+        acc = acceleration_pairwise_1pn(pos, vel, masses, c_value, pn_multiplier, active_mask)
     else:
         raise ValueError(f"unknown model: {model}")
+    # Inactive optional objects stay fixed and do not contaminate diagnostics.
+    if active_mask is not None:
+        vel = vel.copy()
+        acc = acc.copy()
+        vel[~active_mask] = 0.0
+        acc[~active_mask] = 0.0
     return np.concatenate((vel.reshape(-1), acc.reshape(-1)))
 
 
-def rk4_step(state: np.ndarray, dt: float, masses: np.ndarray, model: str, c_value: float, pn_multiplier: float) -> np.ndarray:
+def rk4_step(
+    state: np.ndarray,
+    dt: float,
+    masses: np.ndarray,
+    active_mask: np.ndarray,
+    model: str,
+    c_value: float,
+    pn_multiplier: float,
+) -> np.ndarray:
     """One fourth-order Runge-Kutta time step."""
-    k1 = rhs(state, masses, model, c_value, pn_multiplier)
-    k2 = rhs(state + 0.5 * dt * k1, masses, model, c_value, pn_multiplier)
-    k3 = rhs(state + 0.5 * dt * k2, masses, model, c_value, pn_multiplier)
-    k4 = rhs(state + dt * k3, masses, model, c_value, pn_multiplier)
+    k1 = rhs(state, masses, active_mask, model, c_value, pn_multiplier)
+    k2 = rhs(state + 0.5 * dt * k1, masses, active_mask, model, c_value, pn_multiplier)
+    k3 = rhs(state + 0.5 * dt * k2, masses, active_mask, model, c_value, pn_multiplier)
+    k4 = rhs(state + dt * k3, masses, active_mask, model, c_value, pn_multiplier)
     return state + (dt / 6.0) * (k1 + 2.0 * k2 + 2.0 * k3 + k4)
 
 
-def diagnostics(pos: np.ndarray, vel: np.ndarray, masses: np.ndarray, c_value: float) -> dict[str, float]:
-    """Return simple 1PN validity diagnostics."""
-    speeds = np.linalg.norm(vel, axis=1)
+def diagnostics(pos: np.ndarray, vel: np.ndarray, masses: np.ndarray, active_mask: np.ndarray, c_value: float) -> dict[str, float]:
+    """Return simple 1PN validity diagnostics for active bodies only."""
+    if not np.any(active_mask):
+        return {"max_v_over_c": 0.0, "max_GM_over_rc2": 0.0}
+
+    speeds = np.linalg.norm(vel[active_mask], axis=1)
     max_v_over_c = float(np.max(speeds) / max(c_value, 1.0e-30))
 
     max_compactness = 0.0
     n = len(masses)
     for i in range(n):
+        if not bool(active_mask[i]):
+            continue
         for j in range(i + 1, n):
+            if not bool(active_mask[j]):
+                continue
             dr = pos[i] - pos[j]
             r = math.sqrt(float(np.dot(dr, dr)) + SOFTENING_AU * SOFTENING_AU)
             value_i = G_MODEL * masses[i] / (r * c_value * c_value)
@@ -268,11 +360,31 @@ def simulate_cached(
     sun_mass_log10: float,
     planet_mass_log10: tuple[float, ...],
     planet_distance_scale: tuple[float, ...],
+    include_voyager: bool,
+    voyager_mass_log10kg: float,
+    voyager_vx: float,
+    voyager_vy: float,
+    voyager_vz: float,
+    include_sl9: bool,
+    sl9_mass_log10kg: float,
+    sl9_vx: float,
+    sl9_vy: float,
+    sl9_vz: float,
     c_value: float,
     pn_log10: float,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, float], dict[str, float]]:
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, dict[str, float], dict[str, float]]:
     """Integrate Newton and 1PN models and return downsampled frames."""
-    pos0, vel0, masses = build_initial_conditions(sun_mass_log10, planet_mass_log10, planet_distance_scale)
+    pos0, vel0, masses, active_mask = build_initial_conditions(
+        sun_mass_log10,
+        planet_mass_log10,
+        planet_distance_scale,
+        include_voyager,
+        voyager_mass_log10kg,
+        (voyager_vx, voyager_vy, voyager_vz),
+        include_sl9,
+        sl9_mass_log10kg,
+        (sl9_vx, sl9_vy, sl9_vz),
+    )
     n = len(masses)
     state_n = np.concatenate((pos0.reshape(-1), vel0.reshape(-1)))
     state_p = state_n.copy()
@@ -293,18 +405,19 @@ def simulate_cached(
 
     store(0)
     for step in range(1, n_steps + 1):
-        state_n = rk4_step(state_n, dt, masses, "newton", c_value, pn_multiplier)
-        state_p = rk4_step(state_p, dt, masses, "1pn", c_value, pn_multiplier)
+        state_n = rk4_step(state_n, dt, masses, active_mask, "newton", c_value, pn_multiplier)
+        state_p = rk4_step(state_p, dt, masses, active_mask, "1pn", c_value, pn_multiplier)
         if step % frame_stride == 0 or step == n_steps:
             store(step)
 
-    diag_n = diagnostics(frames_n[-1], state_n[3 * n :].reshape((n, 3)), masses, c_value)
-    diag_p = diagnostics(frames_p[-1], state_p[3 * n :].reshape((n, 3)), masses, c_value)
+    diag_n = diagnostics(frames_n[-1], state_n[3 * n :].reshape((n, 3)), masses, active_mask, c_value)
+    diag_p = diagnostics(frames_p[-1], state_p[3 * n :].reshape((n, 3)), masses, active_mask, c_value)
     return (
         np.asarray(times),
         np.asarray(frames_n),
         np.asarray(frames_p),
         masses,
+        active_mask,
         diag_n,
         diag_p,
     )
@@ -314,12 +427,21 @@ def simulate_cached(
 # Plot helpers
 # =============================================================================
 
-def visible_body_indices(view: str) -> list[int]:
+def visible_body_indices(view: str, include_voyager: bool, include_sl9: bool) -> list[int]:
     if view == "Inner planets":
-        return list(range(0, 5))       # Sun through Mars
-    if view == "To Jupiter":
-        return list(range(0, 6))       # Sun through Jupiter
-    return list(range(0, len(BODIES)))
+        indices = list(range(0, 5))       # Sun through Mars
+    elif view == "To Jupiter":
+        indices = list(range(0, 6))       # Sun through Jupiter
+    else:
+        indices = list(range(0, len(PLANET_BODIES)))
+
+    # Optional non-planet bodies are shown whenever enabled, even if the current
+    # planet-region selection is otherwise limited to the inner planets.
+    if include_voyager:
+        indices.append(VOYAGER_IDX)
+    if include_sl9:
+        indices.append(SL9_IDX)
+    return indices
 
 
 def marker_sizes(
@@ -413,18 +535,31 @@ def make_figure(
     add_model_traces(frames_p, 2, "1PN", frame_index)
 
     axis_min, axis_max = axis_range_for(frames_n, frames_p, visible_indices)
+    # The axis limits are computed once from the full simulated trajectory for
+    # the selected displayed region.  They are then explicitly locked.  This
+    # prevents Plotly from auto-rescaling the 3D boxes while planets move or
+    # while the length of the visible trail changes during playback.  Users can
+    # still change the view manually with Plotly zoom/pan/rotate controls.
+    axis_common = dict(
+        autorange=False,
+        range=[axis_min, axis_max],
+        showspikes=False,
+    )
     axis_template = dict(
-        xaxis=dict(title="x [AU]", range=[axis_min, axis_max]),
-        yaxis=dict(title="y [AU]", range=[axis_min, axis_max]),
-        zaxis=dict(title="z [AU]", range=[axis_min, axis_max]),
+        xaxis=dict(title="x [AU]", **axis_common),
+        yaxis=dict(title="y [AU]", **axis_common),
+        zaxis=dict(title="z [AU]", **axis_common),
         aspectmode="cube",
+        uirevision=PLOT_UIREVISION,
     )
     fig.update_layout(
         scene=axis_template,
         scene2=axis_template,
         height=760,
         margin=dict(l=5, r=5, t=70, b=5),
-        title=f"Solar-System model: t = {times[frame_index]:.2f} yr",
+        title="Solar-System model",
+        uirevision=PLOT_UIREVISION,
+        transition=dict(duration=0),
     )
 
     if animate:
@@ -447,7 +582,19 @@ def make_figure(
                     frame_data.append(go.Scatter3d(x=xyz[:, 0], y=xyz[:, 1], z=xyz[:, 2]))
                 pts = frames[fidx, visible_indices, :]
                 frame_data.append(go.Scatter3d(x=pts[:, 0], y=pts[:, 1], z=pts[:, 2], text=names))
-            animation_frames.append(go.Frame(data=frame_data, traces=list(range(total_trace_count)), name=str(fidx)))
+            frame_layout = go.Layout(
+                scene=axis_template,
+                scene2=axis_template,
+                uirevision=PLOT_UIREVISION,
+            )
+            animation_frames.append(
+                go.Frame(
+                    data=frame_data,
+                    traces=list(range(total_trace_count)),
+                    name=str(fidx),
+                    layout=frame_layout,
+                )
+            )
 
         fig.frames = animation_frames
         fig.update_layout(
@@ -460,7 +607,7 @@ def make_figure(
                     xanchor="left",
                     yanchor="top",
                     buttons=[
-                        dict(label="Play", method="animate", args=[None, {"frame": {"duration": 70, "redraw": True}, "fromcurrent": True}]),
+                        dict(label="Play", method="animate", args=[None, {"frame": {"duration": 70, "redraw": True}, "transition": {"duration": 0}, "fromcurrent": True}]),
                         dict(label="Pause", method="animate", args=[[None], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate"}]),
                     ],
                 )
@@ -475,7 +622,7 @@ def make_figure(
                         dict(
                             method="animate",
                             label=f"{times[fidx]:.1f}",
-                            args=[[str(fidx)], {"frame": {"duration": 0, "redraw": True}, "mode": "immediate"}],
+                            args=[[str(fidx)], {"frame": {"duration": 0, "redraw": True}, "transition": {"duration": 0}, "mode": "immediate"}],
                         )
                         for fidx in selected_animation_frames
                     ],
@@ -492,6 +639,23 @@ def make_figure(
 # =============================================================================
 
 VIEW_OPTIONS = ("Inner planets", "To Jupiter", "All planets")
+
+
+def default_jupiter_radial_vector() -> np.ndarray:
+    """Unit vector from the Sun toward Jupiter in the default initial geometry."""
+    body = PLANET_BODIES[JUPITER_IDX]
+    phase = math.radians(body.phase_deg)
+    inc = math.radians(body.inclination_deg)
+    local_rhat = np.array((math.cos(phase), math.sin(phase), 0.0), dtype=float)
+    rhat = rotation_x(inc) @ local_rhat
+    norm = float(np.linalg.norm(rhat))
+    return rhat / norm if norm > 0.0 else np.array((1.0, 0.0, 0.0), dtype=float)
+
+
+DEFAULT_JUPITER_RHAT = default_jupiter_radial_vector()
+DEFAULT_VOYAGER_REL_V = 3.5 * DEFAULT_JUPITER_RHAT
+DEFAULT_SL9_REL_V = -1.2 * DEFAULT_JUPITER_RHAT
+
 
 DEFAULT_UI_VALUES: dict[str, object] = {
     "view": "To Jupiter",
@@ -511,6 +675,16 @@ DEFAULT_UI_VALUES: dict[str, object] = {
     "loop_playback": True,
     "use_animation": True,
     "max_animation_frames": 120,
+    "include_voyager": False,
+    "voyager_mass_log10kg": math.log10(VOYAGER_DRY_MASS_KG),
+    "voyager_vx": float(DEFAULT_VOYAGER_REL_V[0]),
+    "voyager_vy": float(DEFAULT_VOYAGER_REL_V[1]),
+    "voyager_vz": float(DEFAULT_VOYAGER_REL_V[2]),
+    "include_sl9": False,
+    "sl9_mass_log10kg": math.log10(SL9_DEFAULT_MASS_KG),
+    "sl9_vx": float(DEFAULT_SL9_REL_V[0]),
+    "sl9_vy": float(DEFAULT_SL9_REL_V[1]),
+    "sl9_vz": float(DEFAULT_SL9_REL_V[2]),
 }
 
 for _planet_name in PLANET_NAMES:
@@ -599,6 +773,31 @@ plane is then tilted by the listed inclination.  Finally, positions and
 velocities are transformed to the barycentric frame, so that the initial center
 of mass is at rest.
 
+### Optional spacecraft and comet models
+
+The optional Voyager 1-like probe and the optional Jupiter-impact comet are
+additional point masses inserted near Jupiter.  Their initial positions are
+simplified and their initial velocity components are user-controlled in the
+Jupiter frame,
+        """
+    )
+    st.latex(r"\mathbf v_{\rm object}(0)=\mathbf v_{\rm Jupiter}(0)+\Delta\mathbf v_{\rm slider}")
+    st.markdown(
+        """
+The Voyager default mass follows the NASA mission value for the spacecraft dry
+mass.  NASA lists Voyager 1 as a Jupiter/Saturn flyby mission and gives a
+spacecraft mass of 721.9 kg.  NASA's Voyager FAQ also states that Voyager 1 is
+escaping the Solar System at about 3.5 AU/yr; this is used only as a convenient
+order-of-magnitude default for the outward velocity slider, not as a precise
+historical trajectory.
+
+The comet option is labelled as a Shoemaker--Levy 9-like Jupiter-impact object.
+This is intentional: Comet Halley did not hit Jupiter.  The famous observed
+Jupiter impact was Comet Shoemaker--Levy 9, whose fragments hit Jupiter between
+16 and 22 July 1994.  The app does not model atmospheric entry, fragmentation,
+ablation or impact physics; it only integrates the gravitational point-mass
+trajectory before such an encounter.
+
 ### Newtonian panel
 
 The left panel solves the softened Newtonian N-body equations
@@ -676,6 +875,9 @@ model.
 
 - NASA/JPL Solar System Dynamics, [Planetary Physical Parameters](https://ssd.jpl.nasa.gov/planets/phys_par.html).
 - NASA/JPL Solar System Dynamics, [Approximate Positions of the Planets](https://ssd.jpl.nasa.gov/planets/approx_pos.html).
+- NASA, [Voyager 1 mission page](https://science.nasa.gov/mission/voyager/voyager-1/) and [Voyager FAQ](https://science.nasa.gov/mission/voyager/frequently-asked-questions/).
+- NASA, [Comet Shoemaker--Levy 9](https://science.nasa.gov/solar-system/comets/p-shoemaker-levy-9/), documenting the July 1994 Jupiter impacts.
+- NASA, [1P/Halley](https://science.nasa.gov/solar-system/comets/1p-halley/), included to distinguish Halley from the Jupiter-impact comet.
 - A. Einstein, L. Infeld and B. Hoffmann, *The Gravitational Equations and the Problem of Motion*, Annals of Mathematics **39**, 65--100 (1938), [DOI: 10.2307/1968714](https://doi.org/10.2307/1968714).
 - L. Blanchet, *Gravitational Radiation from Post-Newtonian Sources and Inspiralling Compact Binaries*, Living Reviews in Relativity **17**, 2 (2014), [DOI: 10.12942/lrr-2014-2](https://doi.org/10.12942/lrr-2014-2).
 - J. C. Butcher, *Numerical methods for ordinary differential equations in the 20th century*, Journal of Computational and Applied Mathematics **125**, 1--29 (2000), [DOI: 10.1016/S0377-0427(00)00455-6](https://doi.org/10.1016/S0377-0427(00)00455-6).
@@ -715,6 +917,23 @@ with st.sidebar.expander("Individual planet distances", expanded=False):
     for name in PLANET_NAMES:
         planet_distance_scale.append(st.slider(f"{name}: a/a_real", 0.10, 5.00, step=0.05, key=f"dist_{name}"))
 
+st.sidebar.header("Optional spacecraft / comet")
+include_voyager = st.sidebar.checkbox("Show Voyager 1-like probe", key="include_voyager")
+with st.sidebar.expander("Voyager 1-like probe", expanded=False):
+    voyager_mass_log10kg = st.slider("Voyager mass: log10(m [kg])", 0.0, 30.0, step=0.1, key="voyager_mass_log10kg")
+    st.caption("Initial position: near Jupiter. Velocity components are relative to Jupiter, in AU/yr.")
+    voyager_vx = st.slider("Voyager vx rel. Jupiter [AU/yr]", -10.0, 10.0, step=0.1, key="voyager_vx")
+    voyager_vy = st.slider("Voyager vy rel. Jupiter [AU/yr]", -10.0, 10.0, step=0.1, key="voyager_vy")
+    voyager_vz = st.slider("Voyager vz rel. Jupiter [AU/yr]", -10.0, 10.0, step=0.1, key="voyager_vz")
+
+include_sl9 = st.sidebar.checkbox("Show Jupiter-impact comet (Shoemaker–Levy 9-like)", key="include_sl9")
+with st.sidebar.expander("Jupiter-impact comet / SL9-like body", expanded=False):
+    sl9_mass_log10kg = st.slider("Comet mass: log10(m [kg])", 0.0, 30.0, step=0.1, key="sl9_mass_log10kg")
+    st.caption("Initial position: just outside Jupiter. Velocity components are relative to Jupiter, in AU/yr.")
+    sl9_vx = st.slider("Comet vx rel. Jupiter [AU/yr]", -10.0, 10.0, step=0.1, key="sl9_vx")
+    sl9_vy = st.slider("Comet vy rel. Jupiter [AU/yr]", -10.0, 10.0, step=0.1, key="sl9_vy")
+    sl9_vz = st.slider("Comet vz rel. Jupiter [AU/yr]", -10.0, 10.0, step=0.1, key="sl9_vz")
+
 st.sidebar.header("Playback")
 frame_estimate = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR) / max(frame_stride, 1))) + 1
 n_step_estimate = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR)))
@@ -738,24 +957,36 @@ if n_step_estimate > 20_000:
     st.stop()
 
 with st.spinner("Integrating Newton and 1PN trajectories..."):
-    times, frames_n, frames_p, masses, diag_n, diag_p = simulate_cached(
+    times, frames_n, frames_p, masses, active_mask, diag_n, diag_p = simulate_cached(
         total_years=float(total_years),
         dt_days=float(dt_days),
         frame_stride=int(frame_stride),
         sun_mass_log10=float(sun_mass_log10),
         planet_mass_log10=tuple(float(x) for x in planet_mass_log10),
         planet_distance_scale=tuple(float(x) for x in planet_distance_scale),
+        include_voyager=bool(include_voyager),
+        voyager_mass_log10kg=float(voyager_mass_log10kg),
+        voyager_vx=float(voyager_vx),
+        voyager_vy=float(voyager_vy),
+        voyager_vz=float(voyager_vz),
+        include_sl9=bool(include_sl9),
+        sl9_mass_log10kg=float(sl9_mass_log10kg),
+        sl9_vx=float(sl9_vx),
+        sl9_vy=float(sl9_vy),
+        sl9_vz=float(sl9_vz),
         c_value=float(c_value),
         pn_log10=float(pn_log10),
     )
 
-visible_indices = visible_body_indices(view)
+visible_indices = visible_body_indices(view, bool(include_voyager), bool(include_sl9))
 
 # Reset live playback whenever a physical or display parameter is changed.
 parameter_signature = repr((
     view, total_years, dt_days, frame_stride, trail_frames,
     log10_c, pn_log10, size_gamma, sun_marker, planet_min, planet_max,
     sun_mass_log10, tuple(planet_mass_log10), tuple(planet_distance_scale),
+    include_voyager, voyager_mass_log10kg, voyager_vx, voyager_vy, voyager_vz,
+    include_sl9, sl9_mass_log10kg, sl9_vx, sl9_vy, sl9_vz,
 ))
 if st.session_state.get("last_parameter_signature") != parameter_signature:
     st.session_state.last_parameter_signature = parameter_signature
@@ -826,7 +1057,16 @@ fig = make_figure(
     animate=use_animation,
     max_animation_frames=max_animation_frames,
 )
-st.plotly_chart(fig, use_container_width=True)
+st.plotly_chart(
+    fig,
+    use_container_width=True,
+    key="solar_system_fixed_axis_plot",
+    config={"responsive": True, "scrollZoom": True},
+)
+st.caption(
+    "The displayed 3D axis ranges are locked during playback. "
+    "Use Plotly zoom/pan/rotate controls to change the visible region manually."
+)
 
 col1, col2, col3, col4 = st.columns(4)
 with col1:
@@ -853,14 +1093,35 @@ if max(diag_n["max_v_over_c"], diag_p["max_v_over_c"]) > 0.3 or max(diag_n["max_
 
 st.subheader("Current body parameters")
 rows = []
-rows.append({"body": "Sun", "mass scale": 10.0 ** sun_mass_log10, "distance scale": 0.0, "model mass [M_sun]": masses[0]})
-for i, body in enumerate(BODIES[1:], start=1):
+rows.append({"body": "Sun", "active": True, "mass scale / value": f"{10.0 ** sun_mass_log10:.3g}×", "distance / start": "center", "model mass [M_sun]": masses[0]})
+for i, body in enumerate(PLANET_BODIES[1:], start=1):
     rows.append(
         {
             "body": body.name,
-            "mass scale": 10.0 ** planet_mass_log10[i - 1],
-            "distance scale": planet_distance_scale[i - 1],
+            "active": True,
+            "mass scale / value": f"{10.0 ** planet_mass_log10[i - 1]:.3g}×",
+            "distance / start": f"{planet_distance_scale[i - 1]:.3g} × a_real",
             "model mass [M_sun]": masses[i],
+        }
+    )
+if include_voyager:
+    rows.append(
+        {
+            "body": BODIES[VOYAGER_IDX].name,
+            "active": True,
+            "mass scale / value": f"10^{voyager_mass_log10kg:.2f} kg",
+            "distance / start": "near Jupiter",
+            "model mass [M_sun]": masses[VOYAGER_IDX],
+        }
+    )
+if include_sl9:
+    rows.append(
+        {
+            "body": BODIES[SL9_IDX].name,
+            "active": True,
+            "mass scale / value": f"10^{sl9_mass_log10kg:.2f} kg",
+            "distance / start": "just outside Jupiter",
+            "model mass [M_sun]": masses[SL9_IDX],
         }
     )
 st.dataframe(rows, hide_index=True, use_container_width=True)
