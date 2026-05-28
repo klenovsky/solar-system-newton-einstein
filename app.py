@@ -506,6 +506,221 @@ def trail_slice(frame: int, trail_frames: int) -> slice:
     return slice(start, frame + 1)
 
 
+
+# =============================================================================
+# User-interface language helpers
+# =============================================================================
+
+LANGUAGE_OPTIONS = ("English", "Čeština")
+
+BODY_NAME_CS = {
+    "Sun": "Slunce",
+    "Mercury": "Merkur",
+    "Venus": "Venuše",
+    "Earth": "Země",
+    "Mars": "Mars",
+    "Jupiter": "Jupiter",
+    "Saturn": "Saturn",
+    "Uranus": "Uran",
+    "Neptune": "Neptun",
+    "Voyager 1-like probe": "Sonda podobná Voyageru 1",
+    "SL9-like Jupiter-impact comet": "Kometa typu SL9 dopadající na Jupiter",
+}
+
+VIEW_LABELS = {
+    "en": {
+        "Inner planets": "Inner planets",
+        "To Jupiter": "To Jupiter",
+        "All planets": "All planets",
+    },
+    "cs": {
+        "Inner planets": "Vnitřní planety",
+        "To Jupiter": "Po Jupiter",
+        "All planets": "Všechny planety",
+    },
+}
+
+UI_TEXT = {
+    "en": {
+        "title": "Solar-System motion: Newton gravity vs. Einstein GTR 1PN approximation",
+        "presets": "Presets",
+        "reset_initial": "Reset to initial values",
+        "what": "What this app computes",
+        "global": "Global controls",
+        "displayed_region": "Displayed region",
+        "sim_time": "Simulated time [yr]",
+        "rk4_dt": "RK4 time step [days]",
+        "stride": "Integration steps per displayed frame",
+        "trail": "Trail length [displayed frames]",
+        "pn_params": "1PN parameters",
+        "c_caption": "c = {c:,.1f} AU/yr; physical c ≈ {cphys:,.1f} AU/yr",
+        "pn_caption": "1PN multiplier = {val:.3g}",
+        "display_sizes": "Display sizes",
+        "gamma": "Planet size compression gamma",
+        "sun_marker": "Sun marker diameter [px]",
+        "planet_min": "Minimum planet diameter [px]",
+        "planet_max": "Largest planet diameter [px]",
+        "mass_scaling": "Mass scaling",
+        "sun_mass": "Sun: log10(M/M_real)",
+        "planet_masses": "Individual planet masses",
+        "planet_distances": "Individual planet distances",
+        "optional": "Optional spacecraft / comet",
+        "show_voyager": "Show Voyager 1-like probe",
+        "voyager_title": "Voyager 1-like probe",
+        "voyager_mass": "Voyager mass: log10(m [kg])",
+        "voyager_caption": "Initial position: near Earth, with a small numerical offset from Earth's center. Velocity components are relative to Earth, in AU/yr.",
+        "voyager_vx": "Voyager vx rel. Earth [AU/yr]",
+        "voyager_vy": "Voyager vy rel. Earth [AU/yr]",
+        "voyager_vz": "Voyager vz rel. Earth [AU/yr]",
+        "show_sl9": "Show Jupiter-impact comet (Shoemaker–Levy 9-like)",
+        "sl9_title": "Jupiter-impact comet / SL9-like body",
+        "comet_mass": "Comet mass: log10(m [kg])",
+        "sl9_caption": "Initial position: outside Jupiter's orbit, aimed toward Jupiter by default. Velocity components are relative to Jupiter, in AU/yr.",
+        "comet_vx": "Comet vx rel. Jupiter [AU/yr]",
+        "comet_vy": "Comet vy rel. Jupiter [AU/yr]",
+        "comet_vz": "Comet vz rel. Jupiter [AU/yr]",
+        "playback": "Playback",
+        "step_caption": "Internal RK4 steps: {steps:,}; displayed frames: about {frames:,}",
+        "live_refresh": "Live playback refresh [ms]",
+        "frames_refresh": "Frames advanced per refresh",
+        "loop": "Loop live playback",
+        "plotly_play": "Also create Plotly chart Play button",
+        "max_plotly": "Max Plotly animation frames",
+        "too_many_steps": "The selected time span and time step would require more than 20,000 RK4 steps. Increase the time step, shorten the simulated time, or increase steps per displayed frame.",
+        "spinner": "Integrating Newton and 1PN trajectories...",
+        "live_playback": "Live playback",
+        "start": "▶ Start",
+        "pause": "⏸ Pause",
+        "reset": "↺ Reset",
+        "running": "running",
+        "paused": "paused",
+        "status": "Status: {status}; frame {frame}/{total}; t = {time:.2f} yr",
+        "need_autorefresh": "Live playback requires the optional package streamlit-autorefresh. Install it or use the Plotly Play button in the chart.",
+        "displayed_frame": "Displayed time frame",
+        "axes_caption": "The displayed 3D axis ranges are locked by the selected planet region and are not enlarged by Voyager/comet motion. Use Plotly zoom/pan/rotate controls to change the visible region manually.",
+        "displayed_time": "Displayed time",
+        "sun_mass_scale": "Sun mass scale",
+        "onepn_multiplier": "1PN multiplier",
+        "diagnostics": "Approximation diagnostics",
+        "warn_validity": "The chosen parameters push the system outside the comfortable weak-field / slow-motion 1PN regime. The visualization may still be interesting, but it should not be interpreted as a quantitatively valid relativistic model.",
+        "current_params": "Current body parameters",
+        "body": "body",
+        "active": "active",
+        "mass_value": "mass scale / value",
+        "distance_start": "distance / start",
+        "model_mass": "model mass [M_sun]",
+        "center": "center",
+        "near_earth": "near Earth",
+        "outside_jupiter": "outside Jupiter orbit",
+        "marker_caption": "Marker diameters are visually compressed and are not plotted on the same linear AU scale as the orbital distances. The compression preserves the ordering of body radii but is chosen so that both the Sun and the planets remain visible.",
+        "newton_title": "Newton gravity",
+        "pn_title": "Einstein GTR 1PN approximation",
+        "fig_title": "Solar-System model",
+        "play": "Play",
+        "plot_pause": "Pause",
+        "trail_word": "trail",
+        "bodies_word": "bodies",
+    },
+    "cs": {
+        "title": "Pohyb ve Sluneční soustavě: Newtonova gravitace vs. Einsteinova OTR 1PN aproximace",
+        "presets": "Přednastavení",
+        "reset_initial": "Obnovit výchozí hodnoty",
+        "what": "Co tato aplikace počítá",
+        "global": "Globální ovládání",
+        "displayed_region": "Zobrazená oblast",
+        "sim_time": "Simulovaný čas [rok]",
+        "rk4_dt": "Časový krok RK4 [dny]",
+        "stride": "Integračních kroků na zobrazený snímek",
+        "trail": "Délka stopy [zobrazené snímky]",
+        "pn_params": "Parametry 1PN",
+        "c_caption": "c = {c:,.1f} AU/rok; fyzikální c ≈ {cphys:,.1f} AU/rok",
+        "pn_caption": "Násobek 1PN = {val:.3g}",
+        "display_sizes": "Velikosti zobrazení",
+        "gamma": "Komprese velikostí planet gamma",
+        "sun_marker": "Průměr značky Slunce [px]",
+        "planet_min": "Minimální průměr planety [px]",
+        "planet_max": "Průměr největší planety [px]",
+        "mass_scaling": "Škálování hmotností",
+        "sun_mass": "Slunce: log10(M/M_real)",
+        "planet_masses": "Hmotnosti jednotlivých planet",
+        "planet_distances": "Vzdálenosti jednotlivých planet",
+        "optional": "Volitelná sonda / kometa",
+        "show_voyager": "Zobrazit sondu podobnou Voyageru 1",
+        "voyager_title": "Sonda podobná Voyageru 1",
+        "voyager_mass": "Hmotnost Voyageru: log10(m [kg])",
+        "voyager_caption": "Počáteční poloha: blízko Země, s malým numerickým posunem od středu Země. Složky rychlosti jsou vztažené k Zemi, v AU/rok.",
+        "voyager_vx": "Voyager vx vůči Zemi [AU/rok]",
+        "voyager_vy": "Voyager vy vůči Zemi [AU/rok]",
+        "voyager_vz": "Voyager vz vůči Zemi [AU/rok]",
+        "show_sl9": "Zobrazit kometu dopadající na Jupiter (typ Shoemaker–Levy 9)",
+        "sl9_title": "Kometa dopadající na Jupiter / těleso typu SL9",
+        "comet_mass": "Hmotnost komety: log10(m [kg])",
+        "sl9_caption": "Počáteční poloha: vně Jupiterovy dráhy, výchozí rychlost míří k Jupiteru. Složky rychlosti jsou vztažené k Jupiteru, v AU/rok.",
+        "comet_vx": "Kometa vx vůči Jupiteru [AU/rok]",
+        "comet_vy": "Kometa vy vůči Jupiteru [AU/rok]",
+        "comet_vz": "Kometa vz vůči Jupiteru [AU/rok]",
+        "playback": "Přehrávání",
+        "step_caption": "Vnitřní kroky RK4: {steps:,}; zobrazených snímků přibližně: {frames:,}",
+        "live_refresh": "Obnova živého přehrávání [ms]",
+        "frames_refresh": "Snímků posunutých při jedné obnově",
+        "loop": "Opakovat živé přehrávání ve smyčce",
+        "plotly_play": "Vytvořit také tlačítko Play přímo v grafu Plotly",
+        "max_plotly": "Maximální počet snímků animace Plotly",
+        "too_many_steps": "Zvolený časový rozsah a časový krok by vyžadovaly více než 20 000 kroků RK4. Zvětšete časový krok, zkraťte simulovaný čas nebo zvětšete počet kroků na zobrazený snímek.",
+        "spinner": "Integruji trajektorie Newtonova a 1PN modelu...",
+        "live_playback": "Živé přehrávání",
+        "start": "▶ Spustit",
+        "pause": "⏸ Pozastavit",
+        "reset": "↺ Reset času",
+        "running": "běží",
+        "paused": "pozastaveno",
+        "status": "Stav: {status}; snímek {frame}/{total}; t = {time:.2f} roku",
+        "need_autorefresh": "Živé přehrávání vyžaduje volitelný balíček streamlit-autorefresh. Nainstalujte jej nebo použijte tlačítko Plotly Play v grafu.",
+        "displayed_frame": "Zobrazený časový snímek",
+        "axes_caption": "Rozsahy 3D os jsou zamčené podle vybrané oblasti planet a nezvětšují se pohybem Voyageru/komety. Viditelnou oblast změňte ručně pomocí ovládání Plotly pro zoom/pan/rotaci.",
+        "displayed_time": "Zobrazený čas",
+        "sun_mass_scale": "Škálování hmotnosti Slunce",
+        "onepn_multiplier": "Násobek 1PN",
+        "diagnostics": "Diagnostika aproximace",
+        "warn_validity": "Zvolené parametry posouvají systém mimo pohodlný slabopolní / pomalý 1PN režim. Vizualizace může být stále zajímavá, ale neměla by být interpretována jako kvantitativně platný relativistický model.",
+        "current_params": "Aktuální parametry těles",
+        "body": "těleso",
+        "active": "aktivní",
+        "mass_value": "škálování hmotnosti / hodnota",
+        "distance_start": "vzdálenost / start",
+        "model_mass": "modelová hmotnost [M_sun]",
+        "center": "střed",
+        "near_earth": "blízko Země",
+        "outside_jupiter": "vně Jupiterovy dráhy",
+        "marker_caption": "Průměry značek jsou vizuálně komprimované a nejsou kreslené ve stejném lineárním měřítku AU jako orbitální vzdálenosti. Komprese zachovává pořadí poloměrů těles, ale je zvolena tak, aby bylo vidět Slunce i planety.",
+        "newton_title": "Newtonova gravitace",
+        "pn_title": "Einsteinova OTR 1PN aproximace",
+        "fig_title": "Model Sluneční soustavy",
+        "play": "Spustit",
+        "plot_pause": "Pozastavit",
+        "trail_word": "stopa",
+        "bodies_word": "tělesa",
+    },
+}
+
+
+def lang_code() -> str:
+    return "cs" if st.session_state.get("language") == "Čeština" else "en"
+
+
+def tr(lang: str, key: str, **kwargs: object) -> str:
+    text = UI_TEXT[lang][key]
+    return text.format(**kwargs) if kwargs else text
+
+
+def view_label(view: str, lang: str) -> str:
+    return VIEW_LABELS[lang].get(view, view)
+
+
+def body_display_name(body: BodyData | str, lang: str) -> str:
+    name = body.name if isinstance(body, BodyData) else str(body)
+    return BODY_NAME_CS.get(name, name) if lang == "cs" else name
+
 def make_figure(
     times: np.ndarray,
     frames_n: np.ndarray,
@@ -517,18 +732,19 @@ def make_figure(
     animate: bool,
     max_animation_frames: int,
     fixed_axis_range: tuple[float, float],
+    lang: str = "en",
 ) -> go.Figure:
     """Build static or animated Plotly figure."""
     fig = make_subplots(
         rows=1,
         cols=2,
         specs=[[{"type": "scene"}, {"type": "scene"}]],
-        subplot_titles=("Newton gravity", "Einstein GTR 1PN approximation"),
+        subplot_titles=(tr(lang, "newton_title"), tr(lang, "pn_title")),
         horizontal_spacing=0.02,
     )
 
     colors = [BODIES[i].color for i in visible_indices]
-    names = [BODIES[i].name for i in visible_indices]
+    names = [body_display_name(BODIES[i], lang) for i in visible_indices]
     # Only the optional small bodies get a visible black marker outline.
     # Regular Solar-System bodies are intentionally left without outlines.
     outline_colors = [
@@ -546,7 +762,7 @@ def make_figure(
                     x=xyz[:, 0], y=xyz[:, 1], z=xyz[:, 2],
                     mode="lines",
                     line=dict(width=2, color=body.color),
-                    name=f"{model_prefix} {body.name} trail",
+                    name=f"{model_prefix} {body_display_name(body, lang)} {tr(lang, 'trail_word')}",
                     showlegend=False,
                     hoverinfo="skip",
                 ),
@@ -560,7 +776,7 @@ def make_figure(
                 marker=dict(size=list(sizes), color=colors, opacity=0.98, sizemode="diameter", line=dict(color=outline_colors, width=1)),
                 text=names,
                 textposition="top center",
-                name=f"{model_prefix} bodies",
+                name=f"{model_prefix} {tr(lang, 'bodies_word')}",
                 hovertemplate="%{text}<br>x=%{x:.3f} AU<br>y=%{y:.3f} AU<br>z=%{z:.3f} AU<extra></extra>",
                 showlegend=False,
             ),
@@ -593,7 +809,7 @@ def make_figure(
         scene2=axis_template,
         height=760,
         margin=dict(l=5, r=5, t=70, b=5),
-        title="Solar-System model",
+        title=tr(lang, "fig_title"),
         uirevision=PLOT_UIREVISION,
         transition=dict(duration=0),
     )
@@ -643,8 +859,8 @@ def make_figure(
                     xanchor="left",
                     yanchor="top",
                     buttons=[
-                        dict(label="Play", method="animate", args=[None, {"frame": {"duration": 70, "redraw": True}, "transition": {"duration": 0}, "fromcurrent": True}]),
-                        dict(label="Pause", method="animate", args=[[None], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate"}]),
+                        dict(label=tr(lang, "play"), method="animate", args=[None, {"frame": {"duration": 70, "redraw": True}, "transition": {"duration": 0}, "fromcurrent": True}]),
+                        dict(label=tr(lang, "plot_pause"), method="animate", args=[[None], {"frame": {"duration": 0, "redraw": False}, "mode": "immediate"}]),
                     ],
                 )
             ],
@@ -704,6 +920,7 @@ DEFAULT_SL9_REL_V = -1.2 * DEFAULT_JUPITER_RHAT
 
 
 DEFAULT_UI_VALUES: dict[str, object] = {
+    "language": "English",
     "view": "To Jupiter",
     "total_years": 12.0,
     "dt_days": 5.0,
@@ -760,163 +977,225 @@ def reset_to_initial_values() -> None:
 # =============================================================================
 
 st.set_page_config(page_title="Solar System: Newton vs 1PN", layout="wide")
-st.title("Solar-System motion: Newton gravity vs. Einstein GTR 1PN approximation")
-
 ensure_default_session_state()
 
-st.sidebar.header("Presets")
-if st.sidebar.button("Reset to initial values", use_container_width=True):
+st.sidebar.selectbox("Language / Jazyk", LANGUAGE_OPTIONS, key="language")
+LANG = lang_code()
+
+st.title(tr(LANG, "title"))
+
+st.sidebar.header(tr(LANG, "presets"))
+if st.sidebar.button(tr(LANG, "reset_initial"), use_container_width=True):
     reset_to_initial_values()
     st.rerun()
 
-with st.expander("What this app computes", expanded=False):
-    st.markdown(
-        """
-This app integrates a simplified three-dimensional Solar-System model in the
-unit system
+
+def render_model_description(lang: str) -> None:
+    """Render bilingual description of the numerical model."""
+    if lang == "cs":
+        st.markdown(
+            """
+Tato aplikace integruje zjednodušený trojrozměrný model Sluneční soustavy v soustavě jednotek
+
+- délka: astronomická jednotka, AU,
+- čas: juliánský rok,
+- hmotnost: hmotnost Slunce, `M_sun`.
+
+V těchto jednotkách je gravitační konstanta
+            """
+        )
+        st.latex(r"G = 4\pi^2\;{\rm AU^3}\,{\rm M_\odot^{-1}}\,{\rm yr^{-2}}")
+        st.markdown("Fyzikální rychlost světla je přibližně")
+        st.latex(r"c_{\rm phys}\simeq 63241.077\;{\rm AU\,yr^{-1}}")
+        st.markdown(
+            """
+Numerická data těles vycházejí ze standardních zaokrouhlených hmotností, poloměrů a jednoduchých orbitálních prvků planet. Hmotnosti a poloměry odpovídají tabulce planetárních fyzikálních parametrů NASA/JPL Solar System Dynamics. Orbitální poloměry, sklony a počáteční fáze se zde používají jen ke konstrukci čistých didaktických počátečních podmínek; nejde o efemeridu pro konkrétní datum. JPL výslovně rozlišuje přibližné výpočty z Keplerových elementů od vysoce přesných efemerid Horizons.
+
+### Počáteční podmínky
+
+Každá planeta začíná na zjednodušené kruhové dráze s poloměrem
+            """
+        )
+        st.latex(r"r_i = a_i\,s_i")
+        st.markdown("kde `a_i` je referenční hlavní poloosa a `s_i` je uživatelem nastavené škálování vzdálenosti `a/a_real`. Odpovídající tečná kruhová rychlost je")
+        st.latex(r"v_i = \sqrt{\frac{G\left(M_\odot^{\ast}+m_i^{\ast}\right)}{r_i}}")
+        st.markdown(
+            """
+kde hvězdička značí hmotnosti po uživatelském škálování. Rovina dráhy se poté nakloní o uvedený sklon. Nakonec se polohy a rychlosti převedou do barycentrické soustavy, takže počáteční těžiště je v klidu.
+
+### Volitelná sonda a kometa
+
+Volitelná sonda podobná Voyageru 1 a volitelná kometa dopadající na Jupiter jsou přidané bodové hmotnosti. Sonda podobná Voyageru začíná poblíž Země, zatímco kometa typu Shoemaker--Levy 9 začíná vně Jupiterovy dráhy a ve výchozím nastavení míří k Jupiteru. Jejich počáteční složky rychlosti nastavuje uživatel v lokálním startovním/encounter rámci,
+            """
+        )
+        st.latex(r"\mathbf v_{\rm Voyager}(0)=\mathbf v_{\rm Earth}(0)+\Delta\mathbf v_{\rm slider},\qquad \mathbf v_{\rm comet}(0)=\mathbf v_{\rm Jupiter}(0)+\Delta\mathbf v_{\rm slider}")
+        st.markdown(
+            """
+Výchozí hmotnost Voyageru vychází z hodnoty suché hmotnosti sondy uváděné NASA. NASA popisuje Voyager 1 jako misi s průletem kolem Jupiteru a Saturnu a uvádí hmotnost sondy 721.9 kg. FAQ NASA k Voyageru také uvádí, že Voyager 1 uniká ze Sluneční soustavy rychlostí přibližně 3.5 AU/rok; zde se tato hodnota používá jen jako orientační řád pro výchozí rychlostní posuvník, nikoli jako přesná historická trajektorie.
+
+Volba komety je označena jako objekt typu Shoemaker--Levy 9 dopadající na Jupiter. Je to záměrné: Halleyova kometa do Jupiteru nenarazila. Slavný pozorovaný dopad na Jupiter způsobila kometa Shoemaker--Levy 9, jejíž fragmenty dopadaly do Jupiteru mezi 16. a 22. červencem 1994. Aplikace nemodeluje vstup do atmosféry, fragmentaci, ablaci ani fyziku dopadu; integruje pouze gravitační bodovou trajektorii před takovým setkáním.
+
+### Newtonovský panel
+
+Levý panel řeší změkčené Newtonovy rovnice N těles
+            """
+        )
+        st.latex(r"\dot{\mathbf r}_i=\mathbf v_i")
+        st.latex(r"\dot{\mathbf v}_i=-\sum_{j\ne i}Gm_j\frac{\mathbf r_i-\mathbf r_j}{\left(|\mathbf r_i-\mathbf r_j|^2+\epsilon^2\right)^{3/2}}")
+        st.markdown(
+            """
+Malá hodnota `epsilon = 1e-6 AU` je numerická změkčovací délka. Zabraňuje singularitám zrychlení při nerealisticky blízkých setkáních vytvořených extrémními hodnotami posuvníků. Není to nová fyzikální síla.
+
+### Panel Einsteinovy OTR 1PN aproximace
+
+Pravý panel řeší Newtonovu gravitaci plus párovou první post-newtonovskou korekci. Pro dvojici `i,j` kód používá standardní relativní dvoutělesovou 1PN korekci v harmonických souřadnicích,
+            """
+        )
+    else:
+        st.markdown(
+            """
+This app integrates a simplified three-dimensional Solar-System model in the unit system
 
 - length: astronomical unit, AU,
 - time: Julian year,
 - mass: solar mass, `M_sun`.
 
 In these units the gravitational constant is
-        """
-    )
-    st.latex(r"G = 4\pi^2\;{\rm AU^3}\,{\rm M_\odot^{-1}}\,{\rm yr^{-2}}")
-    st.markdown(
-        """
-The physical speed of light is approximately
-        """
-    )
-    st.latex(r"c_{\rm phys}\simeq 63241.077\;{\rm AU\,yr^{-1}}")
-    st.markdown(
-        """
-The numerical body data are based on standard rounded planetary masses, radii
-and simple orbital elements.  The masses and radii follow the NASA/JPL Solar
-System Dynamics table of planetary physical parameters.  The orbital radii,
-inclinations and phases are used only to construct clean didactic initial
-conditions; the model is not a date-specific ephemeris.  JPL explicitly
-separates such approximate Keplerian-element calculations from high-precision
-Horizons ephemerides.
+            """
+        )
+        st.latex(r"G = 4\pi^2\;{\rm AU^3}\,{\rm M_\odot^{-1}}\,{\rm yr^{-2}}")
+        st.markdown("The physical speed of light is approximately")
+        st.latex(r"c_{\rm phys}\simeq 63241.077\;{\rm AU\,yr^{-1}}")
+        st.markdown(
+            """
+The numerical body data are based on standard rounded planetary masses, radii and simple orbital elements. The masses and radii follow the NASA/JPL Solar System Dynamics table of planetary physical parameters. The orbital radii, inclinations and phases are used only to construct clean didactic initial conditions; the model is not a date-specific ephemeris. JPL explicitly separates such approximate Keplerian-element calculations from high-precision Horizons ephemerides.
 
 ### Initial conditions
 
 For each planet the app starts from a simplified circular orbit with radius
-        """
-    )
-    st.latex(r"r_i = a_i\,s_i")
-    st.markdown(
-        """
-where `a_i` is the reference semi-major axis and `s_i` is the user-controlled
-`a/a_real` distance scale.  The corresponding tangential circular speed is
-        """
-    )
-    st.latex(r"v_i = \sqrt{\frac{G\left(M_\odot^{\ast}+m_i^{\ast}\right)}{r_i}}")
-    st.markdown(
-        """
-where starred quantities denote the masses after user scaling.  The orbital
-plane is then tilted by the listed inclination.  Finally, positions and
-velocities are transformed to the barycentric frame, so that the initial center
-of mass is at rest.
+            """
+        )
+        st.latex(r"r_i = a_i\,s_i")
+        st.markdown("where `a_i` is the reference semi-major axis and `s_i` is the user-controlled `a/a_real` distance scale. The corresponding tangential circular speed is")
+        st.latex(r"v_i = \sqrt{\frac{G\left(M_\odot^{\ast}+m_i^{\ast}\right)}{r_i}}")
+        st.markdown(
+            """
+where starred quantities denote the masses after user scaling. The orbital plane is then tilted by the listed inclination. Finally, positions and velocities are transformed to the barycentric frame, so that the initial center of mass is at rest.
 
 ### Optional spacecraft and comet models
 
-The optional Voyager 1-like probe and the optional Jupiter-impact comet are
-additional point masses.  The Voyager-like probe starts near Earth, while the
-Shoemaker--Levy 9-like comet starts outside Jupiter's orbit and is aimed toward
-Jupiter by default.  Their initial velocity components are user-controlled in
-the local launch/encounter frame,
-        """
-    )
-    st.latex(r"\mathbf v_{\rm Voyager}(0)=\mathbf v_{\rm Earth}(0)+\Delta\mathbf v_{\rm slider},\qquad \mathbf v_{\rm comet}(0)=\mathbf v_{\rm Jupiter}(0)+\Delta\mathbf v_{\rm slider}")
-    st.markdown(
-        """
-The Voyager default mass follows the NASA mission value for the spacecraft dry
-mass.  NASA lists Voyager 1 as a Jupiter/Saturn flyby mission and gives a
-spacecraft mass of 721.9 kg.  NASA's Voyager FAQ also states that Voyager 1 is
-escaping the Solar System at about 3.5 AU/yr; this is used only as a convenient
-order-of-magnitude default for the outward velocity slider, not as a precise
-historical trajectory.
+The optional Voyager 1-like probe and the optional Jupiter-impact comet are additional point masses. The Voyager-like probe starts near Earth, while the Shoemaker--Levy 9-like comet starts outside Jupiter's orbit and is aimed toward Jupiter by default. Their initial velocity components are user-controlled in the local launch/encounter frame,
+            """
+        )
+        st.latex(r"\mathbf v_{\rm Voyager}(0)=\mathbf v_{\rm Earth}(0)+\Delta\mathbf v_{\rm slider},\qquad \mathbf v_{\rm comet}(0)=\mathbf v_{\rm Jupiter}(0)+\Delta\mathbf v_{\rm slider}")
+        st.markdown(
+            """
+The Voyager default mass follows the NASA mission value for the spacecraft dry mass. NASA lists Voyager 1 as a Jupiter/Saturn flyby mission and gives a spacecraft mass of 721.9 kg. NASA's Voyager FAQ also states that Voyager 1 is escaping the Solar System at about 3.5 AU/yr; this is used only as a convenient order-of-magnitude default for the outward velocity slider, not as a precise historical trajectory.
 
-The comet option is labelled as a Shoemaker--Levy 9-like Jupiter-impact object.
-This is intentional: Comet Halley did not hit Jupiter.  The famous observed
-Jupiter impact was Comet Shoemaker--Levy 9, whose fragments hit Jupiter between
-16 and 22 July 1994.  The app does not model atmospheric entry, fragmentation,
-ablation or impact physics; it only integrates the gravitational point-mass
-trajectory before such an encounter.
+The comet option is labelled as a Shoemaker--Levy 9-like Jupiter-impact object. This is intentional: Comet Halley did not hit Jupiter. The famous observed Jupiter impact was Comet Shoemaker--Levy 9, whose fragments hit Jupiter between 16 and 22 July 1994. The app does not model atmospheric entry, fragmentation, ablation or impact physics; it only integrates the gravitational point-mass trajectory before such an encounter.
 
 ### Newtonian panel
 
 The left panel solves the softened Newtonian N-body equations
-        """
-    )
-    st.latex(r"\dot{\mathbf r}_i=\mathbf v_i")
-    st.latex(r"\dot{\mathbf v}_i=-\sum_{j\ne i}Gm_j\frac{\mathbf r_i-\mathbf r_j}{\left(|\mathbf r_i-\mathbf r_j|^2+\epsilon^2\right)^{3/2}}")
-    st.markdown(
-        """
-The small value `epsilon = 1e-6 AU` is a numerical softening length.  It avoids
-singular accelerations during unrealistically close encounters created by
-extreme slider settings.  It is not a new physical force.
+            """
+        )
+        st.latex(r"\dot{\mathbf r}_i=\mathbf v_i")
+        st.latex(r"\dot{\mathbf v}_i=-\sum_{j\ne i}Gm_j\frac{\mathbf r_i-\mathbf r_j}{\left(|\mathbf r_i-\mathbf r_j|^2+\epsilon^2\right)^{3/2}}")
+        st.markdown(
+            """
+The small value `epsilon = 1e-6 AU` is a numerical softening length. It avoids singular accelerations during unrealistically close encounters created by extreme slider settings. It is not a new physical force.
 
 ### Einstein GTR 1PN approximation panel
 
-The right panel solves Newtonian gravity plus a pairwise first
-post-Newtonian correction.  For a pair `i,j` the code uses the standard
-relative two-body 1PN correction in harmonic-coordinate form,
-        """
-    )
+The right panel solves Newtonian gravity plus a pairwise first post-Newtonian correction. For a pair `i,j` the code uses the standard relative two-body 1PN correction in harmonic-coordinate form,
+            """
+        )
     st.latex(r"\mathbf a_{ij}^{\rm rel}=\mathbf a_{ij}^{\rm N}+\lambda_{\rm 1PN}\,\mathbf a_{ij}^{\rm 1PN}")
     st.latex(r"\mathbf a_{ij}^{\rm 1PN}=\frac{G M}{c^2 r^2}\left\{\mathbf n\left[(4+2\eta)\frac{GM}{r}-(1+3\eta)v^2+\frac{3}{2}\eta\dot r^2\right]+(4-2\eta)\dot r\,\mathbf v\right\}")
-    st.markdown(
-        """
-with
-        """
-    )
+    st.markdown("s" if lang == "cs" else "with")
     st.latex(r"M=m_i+m_j,\qquad \eta=\frac{m_i m_j}{M^2},\qquad \mathbf n=\frac{\mathbf r_i-\mathbf r_j}{r},\qquad \mathbf v=\mathbf v_i-\mathbf v_j,\qquad \dot r=\mathbf n\cdot\mathbf v")
-    st.markdown(
-        """
-The pairwise relative correction is split between the two bodies so that the
-pair center-of-mass acceleration remains zero,
-        """
-    )
+    if lang == "cs":
+        st.markdown(
+            """
+Párová relativní korekce se rozdělí mezi obě tělesa tak, aby zrychlení těžiště dvojice zůstalo nulové,
+            """
+        )
+    else:
+        st.markdown(
+            """
+The pairwise relative correction is split between the two bodies so that the pair center-of-mass acceleration remains zero,
+            """
+        )
     st.latex(r"\mathbf a_i^{\rm corr}=\frac{m_j}{m_i+m_j}\mathbf a_{ij}^{\rm 1PN},\qquad \mathbf a_j^{\rm corr}=-\frac{m_i}{m_i+m_j}\mathbf a_{ij}^{\rm 1PN}")
-    st.markdown(
-        """
-The slider `1PN multiplier` sets `lambda_1PN`.  The physically natural value is
-`lambda_1PN = 1`.  Larger values intentionally magnify the relativistic term so
-that the difference from Newtonian motion is easier to see.
+    if lang == "cs":
+        st.markdown(
+            """
+Posuvník `1PN multiplier` nastavuje `lambda_1PN`. Fyzikálně přirozená hodnota je `lambda_1PN = 1`. Větší hodnoty záměrně zvětšují relativistický člen, aby byl rozdíl oproti Newtonovu pohybu lépe viditelný.
 
-This is not a full Einstein-Infeld-Hoffmann N-body integration.  The exact 1PN
-many-body equations contain additional three-body cross terms.  Therefore the
-right panel should be read as a visualization of pairwise two-body 1PN effects,
-not as a precision relativistic ephemeris.
+Nejde o plnou Einstein-Infeld-Hoffmannovu N-tělesovou integraci. Přesné 1PN rovnice více těles obsahují dodatečné tří-tělesové křížové členy. Pravý panel je proto vhodné číst jako vizualizaci párových dvoutělesových 1PN efektů, nikoli jako přesnou relativistickou efemeridu.
+
+### Časová integrace
+
+Oba panely se vyvíjejí klasickou Runge-Kuttovou metodou čtvrtého řádu. Pro soustavu prvního řádu `dy/dt = f(y)` je jeden časový krok
+            """
+        )
+    else:
+        st.markdown(
+            """
+The slider `1PN multiplier` sets `lambda_1PN`. The physically natural value is `lambda_1PN = 1`. Larger values intentionally magnify the relativistic term so that the difference from Newtonian motion is easier to see.
+
+This is not a full Einstein-Infeld-Hoffmann N-body integration. The exact 1PN many-body equations contain additional three-body cross terms. Therefore the right panel should be read as a visualization of pairwise two-body 1PN effects, not as a precision relativistic ephemeris.
 
 ### Time integration
 
-Both panels are advanced with the classical fourth-order Runge-Kutta method.
-For the first-order system `dy/dt = f(y)`, one time step is
-        """
-    )
+Both panels are advanced with the classical fourth-order Runge-Kutta method. For the first-order system `dy/dt = f(y)`, one time step is
+            """
+        )
     st.latex(r"\mathbf y_{n+1}=\mathbf y_n+\frac{\Delta t}{6}\left(\mathbf k_1+2\mathbf k_2+2\mathbf k_3+\mathbf k_4\right)")
     st.latex(r"\mathbf k_1=f(\mathbf y_n),\quad \mathbf k_2=f(\mathbf y_n+\tfrac{\Delta t}{2}\mathbf k_1),\quad \mathbf k_3=f(\mathbf y_n+\tfrac{\Delta t}{2}\mathbf k_2),\quad \mathbf k_4=f(\mathbf y_n+\Delta t\mathbf k_3)")
-    st.markdown(
-        """
-RK4 is convenient and accurate for short educational integrations, but it is not
-symplectic.  Very long integrations or very close encounters should therefore
-not be interpreted as high-precision Solar-System dynamics.
+    if lang == "cs":
+        st.markdown(
+            """
+RK4 je pohodlná a přesná metoda pro krátké výukové integrace, ale není symplektická. Velmi dlouhé integrace nebo velmi blízká setkání proto nemají být interpretovány jako vysoce přesná dynamika Sluneční soustavy.
+
+### Diagnostika platnosti
+
+Zobrazená diagnostika odhaduje dva malé parametry, které by měly zůstat malé pro 1PN interpretaci:
+            """
+        )
+    else:
+        st.markdown(
+            """
+RK4 is convenient and accurate for short educational integrations, but it is not symplectic. Very long integrations or very close encounters should therefore not be interpreted as high-precision Solar-System dynamics.
 
 ### Validity diagnostics
 
-The displayed diagnostics estimate the two small parameters that should remain
-small for the 1PN interpretation:
-        """
-    )
+The displayed diagnostics estimate the two small parameters that should remain small for the 1PN interpretation:
+            """
+        )
     st.latex(r"\max_i\frac{|\mathbf v_i|}{c}\ll 1,\qquad \max_{i<j}\frac{Gm_i}{r_{ij}c^2}\ll 1")
-    st.markdown(
-        """
-If these numbers become too large, the animation can still be interesting, but
-it is no longer a quantitatively reliable weak-field, slow-motion relativistic
-model.
+    if lang == "cs":
+        st.markdown(
+            """
+Pokud jsou tato čísla příliš velká, animace může být stále zajímavá, ale už nejde o kvantitativně spolehlivý slabopolní a pomalý relativistický model.
+
+### Reference
+
+- NASA/JPL Solar System Dynamics, [Planetary Physical Parameters](https://ssd.jpl.nasa.gov/planets/phys_par.html).
+- NASA/JPL Solar System Dynamics, [Approximate Positions of the Planets](https://ssd.jpl.nasa.gov/planets/approx_pos.html).
+- NASA, [Voyager 1 mission page](https://science.nasa.gov/mission/voyager/voyager-1/) and [Voyager FAQ](https://science.nasa.gov/mission/voyager/frequently-asked-questions/).
+- NASA, [Comet Shoemaker--Levy 9](https://science.nasa.gov/solar-system/comets/p-shoemaker-levy-9/), k dopadům na Jupiter v červenci 1994.
+- NASA, [1P/Halley](https://science.nasa.gov/solar-system/comets/1p-halley/), pro odlišení Halleyovy komety od komety dopadlé na Jupiter.
+- A. Einstein, L. Infeld and B. Hoffmann, *The Gravitational Equations and the Problem of Motion*, Annals of Mathematics **39**, 65--100 (1938), [DOI: 10.2307/1968714](https://doi.org/10.2307/1968714).
+- L. Blanchet, *Gravitational Radiation from Post-Newtonian Sources and Inspiralling Compact Binaries*, Living Reviews in Relativity **17**, 2 (2014), [DOI: 10.12942/lrr-2014-2](https://doi.org/10.12942/lrr-2014-2).
+- J. C. Butcher, *Numerical methods for ordinary differential equations in the 20th century*, Journal of Computational and Applied Mathematics **125**, 1--29 (2000), [DOI: 10.1016/S0377-0427(00)00455-6](https://doi.org/10.1016/S0377-0427(00)00455-6).
+- W. Dehnen, *Towards optimal softening in three-dimensional N-body codes -- I. Minimizing the force error*, MNRAS **324**, 273--291 (2001), [DOI: 10.1046/j.1365-8711.2001.04237.x](https://doi.org/10.1046/j.1365-8711.2001.04237.x).
+            """
+        )
+    else:
+        st.markdown(
+            """
+If these numbers become too large, the animation can still be interesting, but it is no longer a quantitatively reliable weak-field, slow-motion relativistic model.
 
 ### References
 
@@ -929,81 +1208,78 @@ model.
 - L. Blanchet, *Gravitational Radiation from Post-Newtonian Sources and Inspiralling Compact Binaries*, Living Reviews in Relativity **17**, 2 (2014), [DOI: 10.12942/lrr-2014-2](https://doi.org/10.12942/lrr-2014-2).
 - J. C. Butcher, *Numerical methods for ordinary differential equations in the 20th century*, Journal of Computational and Applied Mathematics **125**, 1--29 (2000), [DOI: 10.1016/S0377-0427(00)00455-6](https://doi.org/10.1016/S0377-0427(00)00455-6).
 - W. Dehnen, *Towards optimal softening in three-dimensional N-body codes -- I. Minimizing the force error*, MNRAS **324**, 273--291 (2001), [DOI: 10.1046/j.1365-8711.2001.04237.x](https://doi.org/10.1046/j.1365-8711.2001.04237.x).
-        """
-    )
+            """
+        )
 
-st.sidebar.header("Global controls")
-view = st.sidebar.selectbox("Displayed region", VIEW_OPTIONS, key="view")
-total_years = st.sidebar.slider("Simulated time [yr]", min_value=1.0, max_value=250.0, step=1.0, key="total_years")
-dt_days = st.sidebar.slider("RK4 time step [days]", min_value=1.0, max_value=30.0, step=1.0, key="dt_days")
-frame_stride = st.sidebar.slider("Integration steps per displayed frame", min_value=1, max_value=50, step=1, key="frame_stride")
-trail_frames = st.sidebar.slider("Trail length [displayed frames]", min_value=5, max_value=300, step=5, key="trail_frames")
 
-st.sidebar.header("1PN parameters")
-log10_c = st.sidebar.slider("log10(c [AU/yr])", min_value=1.0, max_value=6.0, step=0.05, key="log10_c")
+with st.expander(tr(LANG, "what"), expanded=False):
+    render_model_description(LANG)
+
+st.sidebar.header(tr(LANG, "global"))
+view = st.sidebar.selectbox(tr(LANG, "displayed_region"), VIEW_OPTIONS, key="view", format_func=lambda v: view_label(v, LANG))
+total_years = st.sidebar.slider(tr(LANG, "sim_time"), min_value=1.0, max_value=250.0, step=1.0, key="total_years")
+dt_days = st.sidebar.slider(tr(LANG, "rk4_dt"), min_value=1.0, max_value=30.0, step=1.0, key="dt_days")
+frame_stride = st.sidebar.slider(tr(LANG, "stride"), min_value=1, max_value=50, step=1, key="frame_stride")
+trail_frames = st.sidebar.slider(tr(LANG, "trail"), min_value=5, max_value=300, step=5, key="trail_frames")
+
+st.sidebar.header(tr(LANG, "pn_params"))
+log10_c = st.sidebar.slider("log10(c [AU/yr])" if LANG == "en" else "log10(c [AU/rok])", min_value=1.0, max_value=6.0, step=0.05, key="log10_c")
 c_value = 10.0 ** log10_c
-st.sidebar.caption(f"c = {c_value:,.1f} AU/yr; physical c ≈ {C_REAL_AU_PER_YR:,.1f} AU/yr")
-pn_log10 = st.sidebar.slider("log10(1PN multiplier)", min_value=-3.0, max_value=6.0, step=0.1, key="pn_log10")
-st.sidebar.caption(f"1PN multiplier = {10.0 ** pn_log10:.3g}")
+st.sidebar.caption(tr(LANG, "c_caption", c=c_value, cphys=C_REAL_AU_PER_YR))
+pn_log10 = st.sidebar.slider("log10(1PN multiplier)" if LANG == "en" else "log10(násobku 1PN)", min_value=-3.0, max_value=6.0, step=0.1, key="pn_log10")
+st.sidebar.caption(tr(LANG, "pn_caption", val=10.0 ** pn_log10))
 
-st.sidebar.header("Display sizes")
-size_gamma = st.sidebar.slider("Planet size compression gamma", 0.05, 0.80, step=0.05, key="size_gamma")
-sun_marker = st.sidebar.slider("Sun marker diameter [px]", 2.0, 20.0, step=0.5, key="sun_marker")
-planet_min = st.sidebar.slider("Minimum planet diameter [px]", 3.0, 14.0, step=0.5, key="planet_min")
-planet_max = st.sidebar.slider("Largest planet diameter [px]", 5.0, 25.0, step=0.5, key="planet_max")
+st.sidebar.header(tr(LANG, "display_sizes"))
+size_gamma = st.sidebar.slider(tr(LANG, "gamma"), 0.05, 0.80, step=0.05, key="size_gamma")
+sun_marker = st.sidebar.slider(tr(LANG, "sun_marker"), 2.0, 20.0, step=0.5, key="sun_marker")
+planet_min = st.sidebar.slider(tr(LANG, "planet_min"), 3.0, 14.0, step=0.5, key="planet_min")
+planet_max = st.sidebar.slider(tr(LANG, "planet_max"), 5.0, 25.0, step=0.5, key="planet_max")
 
-st.sidebar.header("Mass scaling")
-sun_mass_log10 = st.sidebar.slider("Sun: log10(M/M_real)", -3.0, 3.0, step=0.1, key="sun_mass_log10")
+st.sidebar.header(tr(LANG, "mass_scaling"))
+sun_mass_log10 = st.sidebar.slider(tr(LANG, "sun_mass"), -3.0, 3.0, step=0.1, key="sun_mass_log10")
 planet_mass_log10 = []
-with st.sidebar.expander("Individual planet masses", expanded=False):
+with st.sidebar.expander(tr(LANG, "planet_masses"), expanded=False):
     for name in PLANET_NAMES:
-        planet_mass_log10.append(st.slider(f"{name}: log10(M/M_real)", -3.0, 6.0, step=0.1, key=f"mass_{name}"))
+        planet_mass_log10.append(st.slider(f"{body_display_name(name, LANG)}: log10(M/M_real)", -3.0, 6.0, step=0.1, key=f"mass_{name}"))
 
 planet_distance_scale = []
-with st.sidebar.expander("Individual planet distances", expanded=False):
+with st.sidebar.expander(tr(LANG, "planet_distances"), expanded=False):
     for name in PLANET_NAMES:
-        planet_distance_scale.append(st.slider(f"{name}: a/a_real", 0.10, 5.00, step=0.05, key=f"dist_{name}"))
+        planet_distance_scale.append(st.slider(f"{body_display_name(name, LANG)}: a/a_real", 0.10, 5.00, step=0.05, key=f"dist_{name}"))
 
-st.sidebar.header("Optional spacecraft / comet")
-include_voyager = st.sidebar.checkbox("Show Voyager 1-like probe", key="include_voyager")
-with st.sidebar.expander("Voyager 1-like probe", expanded=False):
-    voyager_mass_log10kg = st.slider("Voyager mass: log10(m [kg])", 0.0, 30.0, step=0.1, key="voyager_mass_log10kg")
-    st.caption("Initial position: near Earth, with a small numerical offset from Earth's center. Velocity components are relative to Earth, in AU/yr.")
-    voyager_vx = st.slider("Voyager vx rel. Earth [AU/yr]", -10.0, 10.0, step=0.1, key="voyager_vx")
-    voyager_vy = st.slider("Voyager vy rel. Earth [AU/yr]", -10.0, 10.0, step=0.1, key="voyager_vy")
-    voyager_vz = st.slider("Voyager vz rel. Earth [AU/yr]", -10.0, 10.0, step=0.1, key="voyager_vz")
+st.sidebar.header(tr(LANG, "optional"))
+include_voyager = st.sidebar.checkbox(tr(LANG, "show_voyager"), key="include_voyager")
+with st.sidebar.expander(tr(LANG, "voyager_title"), expanded=False):
+    voyager_mass_log10kg = st.slider(tr(LANG, "voyager_mass"), 0.0, 30.0, step=0.1, key="voyager_mass_log10kg")
+    st.caption(tr(LANG, "voyager_caption"))
+    voyager_vx = st.slider(tr(LANG, "voyager_vx"), -10.0, 10.0, step=0.1, key="voyager_vx")
+    voyager_vy = st.slider(tr(LANG, "voyager_vy"), -10.0, 10.0, step=0.1, key="voyager_vy")
+    voyager_vz = st.slider(tr(LANG, "voyager_vz"), -10.0, 10.0, step=0.1, key="voyager_vz")
 
-include_sl9 = st.sidebar.checkbox("Show Jupiter-impact comet (Shoemaker–Levy 9-like)", key="include_sl9")
-with st.sidebar.expander("Jupiter-impact comet / SL9-like body", expanded=False):
-    sl9_mass_log10kg = st.slider("Comet mass: log10(m [kg])", 0.0, 30.0, step=0.1, key="sl9_mass_log10kg")
-    st.caption("Initial position: outside Jupiter's orbit, aimed toward Jupiter by default. Velocity components are relative to Jupiter, in AU/yr.")
-    sl9_vx = st.slider("Comet vx rel. Jupiter [AU/yr]", -10.0, 10.0, step=0.1, key="sl9_vx")
-    sl9_vy = st.slider("Comet vy rel. Jupiter [AU/yr]", -10.0, 10.0, step=0.1, key="sl9_vy")
-    sl9_vz = st.slider("Comet vz rel. Jupiter [AU/yr]", -10.0, 10.0, step=0.1, key="sl9_vz")
+include_sl9 = st.sidebar.checkbox(tr(LANG, "show_sl9"), key="include_sl9")
+with st.sidebar.expander(tr(LANG, "sl9_title"), expanded=False):
+    sl9_mass_log10kg = st.slider(tr(LANG, "comet_mass"), 0.0, 30.0, step=0.1, key="sl9_mass_log10kg")
+    st.caption(tr(LANG, "sl9_caption"))
+    sl9_vx = st.slider(tr(LANG, "comet_vx"), -10.0, 10.0, step=0.1, key="sl9_vx")
+    sl9_vy = st.slider(tr(LANG, "comet_vy"), -10.0, 10.0, step=0.1, key="sl9_vy")
+    sl9_vz = st.slider(tr(LANG, "comet_vz"), -10.0, 10.0, step=0.1, key="sl9_vz")
 
-st.sidebar.header("Playback")
+st.sidebar.header(tr(LANG, "playback"))
 frame_estimate = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR) / max(frame_stride, 1))) + 1
 n_step_estimate = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR)))
-st.sidebar.caption(f"Internal RK4 steps: {n_step_estimate:,}; displayed frames: about {frame_estimate:,}")
+st.sidebar.caption(tr(LANG, "step_caption", steps=n_step_estimate, frames=frame_estimate))
 
-# Two playback modes are provided:
-# 1. Streamlit live playback: Start/Pause buttons advance the displayed frame by
-#    rerunning the app on a timer. This is the most visible option for web use.
-# 2. Plotly animation: a Play button is embedded directly inside the Plotly chart.
-live_interval_ms = st.sidebar.slider("Live playback refresh [ms]", 100, 2000, step=50, key="live_interval_ms")
-frames_per_refresh = st.sidebar.slider("Frames advanced per refresh", 1, 20, step=1, key="frames_per_refresh")
-loop_playback = st.sidebar.checkbox("Loop live playback", key="loop_playback")
-use_animation = st.sidebar.checkbox("Also create Plotly chart Play button", key="use_animation")
-max_animation_frames = st.sidebar.slider("Max Plotly animation frames", 20, 250, step=10, key="max_animation_frames")
+live_interval_ms = st.sidebar.slider(tr(LANG, "live_refresh"), 100, 2000, step=50, key="live_interval_ms")
+frames_per_refresh = st.sidebar.slider(tr(LANG, "frames_refresh"), 1, 20, step=1, key="frames_per_refresh")
+loop_playback = st.sidebar.checkbox(tr(LANG, "loop"), key="loop_playback")
+use_animation = st.sidebar.checkbox(tr(LANG, "plotly_play"), key="use_animation")
+max_animation_frames = st.sidebar.slider(tr(LANG, "max_plotly"), 20, 250, step=10, key="max_animation_frames")
 
 if n_step_estimate > 20_000:
-    st.error(
-        "The selected time span and time step would require more than 20,000 RK4 steps. "
-        "Increase the time step, shorten the simulated time, or increase steps per displayed frame."
-    )
+    st.error(tr(LANG, "too_many_steps"))
     st.stop()
 
-with st.spinner("Integrating Newton and 1PN trajectories..."):
+with st.spinner(tr(LANG, "spinner")):
     times, frames_n, frames_p, masses, active_mask, diag_n, diag_p = simulate_cached(
         total_years=float(total_years),
         dt_days=float(dt_days),
@@ -1027,7 +1303,6 @@ with st.spinner("Integrating Newton and 1PN trajectories..."):
 
 visible_indices = visible_body_indices(view, bool(include_voyager), bool(include_sl9))
 
-# Reset live playback whenever a physical or display parameter is changed.
 parameter_signature = repr((
     view, total_years, dt_days, frame_stride, trail_frames,
     log10_c, pn_log10, size_gamma, sun_marker, planet_min, planet_max,
@@ -1040,7 +1315,7 @@ if st.session_state.get("last_parameter_signature") != parameter_signature:
     st.session_state.live_frame = 0
     st.session_state.running = False
 
-st.subheader("Live playback")
+st.subheader(tr(LANG, "live_playback"))
 if "live_frame" not in st.session_state:
     st.session_state.live_frame = 0
 if "running" not in st.session_state:
@@ -1050,21 +1325,18 @@ st.session_state.live_frame = int(np.clip(st.session_state.live_frame, 0, len(ti
 
 pb1, pb2, pb3, pb4 = st.columns([1, 1, 1, 3])
 with pb1:
-    if st.button("▶ Start", use_container_width=True):
+    if st.button(tr(LANG, "start"), use_container_width=True):
         st.session_state.running = True
 with pb2:
-    if st.button("⏸ Pause", use_container_width=True):
+    if st.button(tr(LANG, "pause"), use_container_width=True):
         st.session_state.running = False
 with pb3:
-    if st.button("↺ Reset", use_container_width=True):
+    if st.button(tr(LANG, "reset"), use_container_width=True):
         st.session_state.live_frame = 0
         st.session_state.running = False
 with pb4:
-    st.write(
-        f"Status: {'running' if st.session_state.running else 'paused'}; "
-        f"frame {st.session_state.live_frame + 1}/{len(times)}; "
-        f"t = {times[st.session_state.live_frame]:.2f} yr"
-    )
+    status = tr(LANG, "running") if st.session_state.running else tr(LANG, "paused")
+    st.write(tr(LANG, "status", status=status, frame=st.session_state.live_frame + 1, total=len(times), time=times[st.session_state.live_frame]))
 
 if st.session_state.running:
     if HAS_AUTOREFRESH:
@@ -1078,13 +1350,10 @@ if st.session_state.running:
                 st.session_state.running = False
         st.session_state.live_frame = int(next_frame)
     else:
-        st.warning(
-            "Live playback requires the optional package streamlit-autorefresh. "
-            "Install it or use the Plotly Play button in the chart."
-        )
+        st.warning(tr(LANG, "need_autorefresh"))
 else:
     st.session_state.live_frame = st.slider(
-        "Displayed time frame",
+        tr(LANG, "displayed_frame"),
         0,
         len(times) - 1,
         int(st.session_state.live_frame),
@@ -1105,6 +1374,7 @@ fig = make_figure(
     animate=use_animation,
     max_animation_frames=max_animation_frames,
     fixed_axis_range=fixed_axis_range,
+    lang=LANG,
 )
 st.plotly_chart(
     fig,
@@ -1112,22 +1382,19 @@ st.plotly_chart(
     key="solar_system_fixed_axis_plot",
     config={"responsive": True, "scrollZoom": True},
 )
-st.caption(
-    "The displayed 3D axis ranges are locked by the selected planet region and are not enlarged by Voyager/comet motion. "
-    "Use Plotly zoom/pan/rotate controls to change the visible region manually."
-)
+st.caption(tr(LANG, "axes_caption"))
 
 col1, col2, col3, col4 = st.columns(4)
 with col1:
-    st.metric("Displayed time", f"{times[current_frame]:.2f} yr")
+    st.metric(tr(LANG, "displayed_time"), f"{times[current_frame]:.2f} yr")
 with col2:
-    st.metric("Sun mass scale", f"{10.0 ** sun_mass_log10:.3g}×")
+    st.metric(tr(LANG, "sun_mass_scale"), f"{10.0 ** sun_mass_log10:.3g}×")
 with col3:
-    st.metric("1PN multiplier", f"{10.0 ** pn_log10:.3g}×")
+    st.metric(tr(LANG, "onepn_multiplier"), f"{10.0 ** pn_log10:.3g}×")
 with col4:
     st.metric("c", f"{c_value:,.0f} AU/yr")
 
-st.subheader("Approximation diagnostics")
+st.subheader(tr(LANG, "diagnostics"))
 d1, d2, d3, d4 = st.columns(4)
 d1.metric("Newton max v/c", f"{diag_n['max_v_over_c']:.3e}")
 d2.metric("Newton max GM/(rc²)", f"{diag_n['max_GM_over_rc2']:.3e}")
@@ -1135,47 +1402,41 @@ d3.metric("1PN max v/c", f"{diag_p['max_v_over_c']:.3e}")
 d4.metric("1PN max GM/(rc²)", f"{diag_p['max_GM_over_rc2']:.3e}")
 
 if max(diag_n["max_v_over_c"], diag_p["max_v_over_c"]) > 0.3 or max(diag_n["max_GM_over_rc2"], diag_p["max_GM_over_rc2"]) > 0.1:
-    st.warning(
-        "The chosen parameters push the system outside the comfortable weak-field / slow-motion 1PN regime. "
-        "The visualization may still be interesting, but it should not be interpreted as a quantitatively valid relativistic model."
-    )
+    st.warning(tr(LANG, "warn_validity"))
 
-st.subheader("Current body parameters")
+st.subheader(tr(LANG, "current_params"))
 rows = []
-rows.append({"body": "Sun", "active": True, "mass scale / value": f"{10.0 ** sun_mass_log10:.3g}×", "distance / start": "center", "model mass [M_sun]": masses[0]})
+rows.append({tr(LANG, "body"): body_display_name("Sun", LANG), tr(LANG, "active"): True, tr(LANG, "mass_value"): f"{10.0 ** sun_mass_log10:.3g}×", tr(LANG, "distance_start"): tr(LANG, "center"), tr(LANG, "model_mass"): masses[0]})
 for i, body in enumerate(PLANET_BODIES[1:], start=1):
     rows.append(
         {
-            "body": body.name,
-            "active": True,
-            "mass scale / value": f"{10.0 ** planet_mass_log10[i - 1]:.3g}×",
-            "distance / start": f"{planet_distance_scale[i - 1]:.3g} × a_real",
-            "model mass [M_sun]": masses[i],
+            tr(LANG, "body"): body_display_name(body, LANG),
+            tr(LANG, "active"): True,
+            tr(LANG, "mass_value"): f"{10.0 ** planet_mass_log10[i - 1]:.3g}×",
+            tr(LANG, "distance_start"): f"{planet_distance_scale[i - 1]:.3g} × a_real",
+            tr(LANG, "model_mass"): masses[i],
         }
     )
 if include_voyager:
     rows.append(
         {
-            "body": BODIES[VOYAGER_IDX].name,
-            "active": True,
-            "mass scale / value": f"10^{voyager_mass_log10kg:.2f} kg",
-            "distance / start": "near Earth",
-            "model mass [M_sun]": masses[VOYAGER_IDX],
+            tr(LANG, "body"): body_display_name(BODIES[VOYAGER_IDX], LANG),
+            tr(LANG, "active"): True,
+            tr(LANG, "mass_value"): f"10^{voyager_mass_log10kg:.2f} kg",
+            tr(LANG, "distance_start"): tr(LANG, "near_earth"),
+            tr(LANG, "model_mass"): masses[VOYAGER_IDX],
         }
     )
 if include_sl9:
     rows.append(
         {
-            "body": BODIES[SL9_IDX].name,
-            "active": True,
-            "mass scale / value": f"10^{sl9_mass_log10kg:.2f} kg",
-            "distance / start": "outside Jupiter orbit",
-            "model mass [M_sun]": masses[SL9_IDX],
+            tr(LANG, "body"): body_display_name(BODIES[SL9_IDX], LANG),
+            tr(LANG, "active"): True,
+            tr(LANG, "mass_value"): f"10^{sl9_mass_log10kg:.2f} kg",
+            tr(LANG, "distance_start"): tr(LANG, "outside_jupiter"),
+            tr(LANG, "model_mass"): masses[SL9_IDX],
         }
     )
 st.dataframe(rows, hide_index=True, use_container_width=True)
 
-st.caption(
-    "Marker diameters are visually compressed and are not plotted on the same linear AU scale as the orbital distances. "
-    "The compression preserves the ordering of body radii but is chosen so that both the Sun and the planets remain visible."
-)
+st.caption(tr(LANG, "marker_caption"))
