@@ -93,9 +93,11 @@ EXTRA_BODIES: tuple[BodyData, ...] = (
 )
 
 BODIES: tuple[BodyData, ...] = PLANET_BODIES + EXTRA_BODIES
+EARTH_IDX = 3
 JUPITER_IDX = 5
 VOYAGER_IDX = len(PLANET_BODIES)
 SL9_IDX = len(PLANET_BODIES) + 1
+SL9_START_OFFSET_AU = 1.0
 PLANET_NAMES = tuple(body.name for body in PLANET_BODIES[1:])
 BODY_NAMES = tuple(body.name for body in BODIES)
 PLANET_MAX_RADIUS_KM = max(body.radius_km for body in PLANET_BODIES[1:])
@@ -126,7 +128,7 @@ def build_initial_conditions(
     planet_distance_scale: Sequence[float],
     include_voyager: bool,
     voyager_mass_log10kg: float,
-    voyager_velocity_jupiter_frame: Sequence[float],
+    voyager_velocity_earth_frame: Sequence[float],
     include_sl9: bool,
     sl9_mass_log10kg: float,
     sl9_velocity_jupiter_frame: Sequence[float],
@@ -139,9 +141,10 @@ def build_initial_conditions(
     model, not a high-precision ephemeris for a specific date.
 
     Optional objects are deliberately simplified:
-    - the Voyager 1-like probe starts near Jupiter and receives a user-set
-      velocity relative to Jupiter;
-    - the SL9-like comet starts just outside Jupiter and receives a user-set
+    - the Voyager 1-like probe starts near Earth, with a small numerical offset
+      from Earth's center to avoid a singular initial separation, and receives a
+      user-set velocity relative to Earth;
+    - the SL9-like comet starts outside Jupiter's orbit and receives a user-set
       velocity relative to Jupiter, by default aimed toward Jupiter.
     """
     n = len(BODIES)
@@ -172,27 +175,35 @@ def build_initial_conditions(
         pos[i] = rot @ local_pos
         vel[i] = rot @ local_vel
 
-    # Jupiter-based insertion points for optional small bodies.  This is a
-    # didactic setup, not a reconstructed Voyager launch/flyby trajectory and
-    # not a reconstructed Shoemaker-Levy 9 pre-impact ephemeris.
+    # Insertion points for optional small bodies.  This is a didactic setup, not
+    # a reconstructed Voyager launch/flyby trajectory and not a reconstructed
+    # Shoemaker-Levy 9 pre-impact ephemeris.
+    epos = pos[EARTH_IDX].copy()
+    evel = vel[EARTH_IDX].copy()
+    enorm = float(np.linalg.norm(epos))
+    rhat_e = epos / enorm if enorm > 0.0 else np.array((1.0, 0.0, 0.0), dtype=float)
+
     jpos = pos[JUPITER_IDX].copy()
     jvel = vel[JUPITER_IDX].copy()
     jnorm = float(np.linalg.norm(jpos))
-    if jnorm > 0.0:
-        rhat_j = jpos / jnorm
-    else:
-        rhat_j = np.array((1.0, 0.0, 0.0), dtype=float)
+    rhat_j = jpos / jnorm if jnorm > 0.0 else np.array((1.0, 0.0, 0.0), dtype=float)
 
     if include_voyager:
         masses[VOYAGER_IDX] = (10.0 ** float(voyager_mass_log10kg)) / MSUN_KG
         active[VOYAGER_IDX] = True
-        pos[VOYAGER_IDX] = jpos + 0.15 * rhat_j
-        vel[VOYAGER_IDX] = jvel + np.asarray(voyager_velocity_jupiter_frame, dtype=float)
+        # Start essentially at Earth.  A small 0.002 AU offset avoids starting
+        # exactly at Earth's center, which would create a numerical singularity
+        # for a point-mass Earth in this simple model.
+        pos[VOYAGER_IDX] = epos + 0.002 * rhat_e
+        vel[VOYAGER_IDX] = evel + np.asarray(voyager_velocity_earth_frame, dtype=float)
 
     if include_sl9:
         masses[SL9_IDX] = (10.0 ** float(sl9_mass_log10kg)) / MSUN_KG
         active[SL9_IDX] = True
-        pos[SL9_IDX] = jpos + 0.25 * rhat_j
+        # Start outside Jupiter's orbit and aim inward toward Jupiter by default.
+        # Since the velocity is added to Jupiter's velocity, an exactly radial
+        # default relative velocity gives a simple visual Jupiter-encounter path.
+        pos[SL9_IDX] = jpos + SL9_START_OFFSET_AU * rhat_j
         vel[SL9_IDX] = jvel + np.asarray(sl9_velocity_jupiter_frame, dtype=float)
 
     pos, vel = barycentric_transform(pos, vel, masses)
@@ -462,12 +473,31 @@ def marker_sizes(
     return sizes
 
 
-def axis_range_for(frames_a: np.ndarray, frames_b: np.ndarray, indices: Sequence[int]) -> tuple[float, float]:
-    selected = np.concatenate((frames_a[:, indices, :].reshape((-1, 3)), frames_b[:, indices, :].reshape((-1, 3))), axis=0)
-    max_abs = float(np.max(np.abs(selected)))
-    if not np.isfinite(max_abs) or max_abs < 0.5:
-        max_abs = 1.0
-    margin = 1.12 * max_abs
+def planet_indices_for_view(view: str) -> list[int]:
+    """Planet-only indices that define the fixed plotting box for each view."""
+    if view == "Inner planets":
+        return list(range(0, 5))       # Sun through Mars
+    if view == "To Jupiter":
+        return list(range(0, 6))       # Sun through Jupiter
+    return list(range(0, len(PLANET_BODIES)))
+
+
+def fixed_axis_range_for_view(view: str, planet_distance_scale: Sequence[float]) -> tuple[float, float]:
+    """Return a fixed AU range for the selected planet region.
+
+    The optional Voyager/comet bodies are intentionally ignored here.  Otherwise
+    a fast escaping probe or an incoming comet would continuously enlarge the
+    two 3D boxes and make the planets appear to shrink.  Users can still inspect
+    objects outside the fixed box by manually zooming/panning the Plotly view.
+    """
+    indices = planet_indices_for_view(view)
+    max_r = 1.0
+    for idx in indices:
+        if idx == 0:
+            continue
+        scale = float(planet_distance_scale[idx - 1]) if idx - 1 < len(planet_distance_scale) else 1.0
+        max_r = max(max_r, PLANET_BODIES[idx].semi_major_au * max(scale, 1.0e-4))
+    margin = 1.22 * max_r
     return -margin, margin
 
 
@@ -486,6 +516,7 @@ def make_figure(
     sizes: Sequence[float],
     animate: bool,
     max_animation_frames: int,
+    fixed_axis_range: tuple[float, float],
 ) -> go.Figure:
     """Build static or animated Plotly figure."""
     fig = make_subplots(
@@ -534,12 +565,11 @@ def make_figure(
     add_model_traces(frames_n, 1, "Newton", frame_index)
     add_model_traces(frames_p, 2, "1PN", frame_index)
 
-    axis_min, axis_max = axis_range_for(frames_n, frames_p, visible_indices)
-    # The axis limits are computed once from the full simulated trajectory for
-    # the selected displayed region.  They are then explicitly locked.  This
-    # prevents Plotly from auto-rescaling the 3D boxes while planets move or
-    # while the length of the visible trail changes during playback.  Users can
-    # still change the view manually with Plotly zoom/pan/rotate controls.
+    axis_min, axis_max = fixed_axis_range
+    # The axis limits are fixed by the selected planet region, not by the current
+    # positions of optional bodies.  This prevents Voyager/comet trajectories
+    # from stretching the 3D boxes during playback.  Users can still change the
+    # view manually with Plotly zoom/pan/rotate controls.
     axis_common = dict(
         autorange=False,
         range=[axis_min, axis_max],
@@ -641,19 +671,29 @@ def make_figure(
 VIEW_OPTIONS = ("Inner planets", "To Jupiter", "All planets")
 
 
-def default_jupiter_radial_vector() -> np.ndarray:
-    """Unit vector from the Sun toward Jupiter in the default initial geometry."""
-    body = PLANET_BODIES[JUPITER_IDX]
+def default_orbit_unit_vectors(body_index: int) -> tuple[np.ndarray, np.ndarray]:
+    """Return radial and tangential unit vectors for a default circular orbit."""
+    body = PLANET_BODIES[body_index]
     phase = math.radians(body.phase_deg)
     inc = math.radians(body.inclination_deg)
     local_rhat = np.array((math.cos(phase), math.sin(phase), 0.0), dtype=float)
-    rhat = rotation_x(inc) @ local_rhat
-    norm = float(np.linalg.norm(rhat))
-    return rhat / norm if norm > 0.0 else np.array((1.0, 0.0, 0.0), dtype=float)
+    local_that = np.array((-math.sin(phase), math.cos(phase), 0.0), dtype=float)
+    rot = rotation_x(inc)
+    rhat = rot @ local_rhat
+    that = rot @ local_that
+    rnorm = float(np.linalg.norm(rhat))
+    tnorm = float(np.linalg.norm(that))
+    return (
+        rhat / rnorm if rnorm > 0.0 else np.array((1.0, 0.0, 0.0), dtype=float),
+        that / tnorm if tnorm > 0.0 else np.array((0.0, 1.0, 0.0), dtype=float),
+    )
 
 
-DEFAULT_JUPITER_RHAT = default_jupiter_radial_vector()
-DEFAULT_VOYAGER_REL_V = 3.5 * DEFAULT_JUPITER_RHAT
+DEFAULT_EARTH_RHAT, DEFAULT_EARTH_THAT = default_orbit_unit_vectors(EARTH_IDX)
+DEFAULT_JUPITER_RHAT, DEFAULT_JUPITER_THAT = default_orbit_unit_vectors(JUPITER_IDX)
+# Hohmann-like prograde excess velocity from Earth toward the outer Solar System.
+DEFAULT_VOYAGER_REL_V = 1.9 * DEFAULT_EARTH_THAT
+# A simple inward approach from outside Jupiter's orbit.
 DEFAULT_SL9_REL_V = -1.2 * DEFAULT_JUPITER_RHAT
 
 
@@ -776,12 +816,13 @@ of mass is at rest.
 ### Optional spacecraft and comet models
 
 The optional Voyager 1-like probe and the optional Jupiter-impact comet are
-additional point masses inserted near Jupiter.  Their initial positions are
-simplified and their initial velocity components are user-controlled in the
-Jupiter frame,
+additional point masses.  The Voyager-like probe starts near Earth, while the
+Shoemaker--Levy 9-like comet starts outside Jupiter's orbit and is aimed toward
+Jupiter by default.  Their initial velocity components are user-controlled in
+the local launch/encounter frame,
         """
     )
-    st.latex(r"\mathbf v_{\rm object}(0)=\mathbf v_{\rm Jupiter}(0)+\Delta\mathbf v_{\rm slider}")
+    st.latex(r"\mathbf v_{\rm Voyager}(0)=\mathbf v_{\rm Earth}(0)+\Delta\mathbf v_{\rm slider},\qquad \mathbf v_{\rm comet}(0)=\mathbf v_{\rm Jupiter}(0)+\Delta\mathbf v_{\rm slider}")
     st.markdown(
         """
 The Voyager default mass follows the NASA mission value for the spacecraft dry
@@ -921,15 +962,15 @@ st.sidebar.header("Optional spacecraft / comet")
 include_voyager = st.sidebar.checkbox("Show Voyager 1-like probe", key="include_voyager")
 with st.sidebar.expander("Voyager 1-like probe", expanded=False):
     voyager_mass_log10kg = st.slider("Voyager mass: log10(m [kg])", 0.0, 30.0, step=0.1, key="voyager_mass_log10kg")
-    st.caption("Initial position: near Jupiter. Velocity components are relative to Jupiter, in AU/yr.")
-    voyager_vx = st.slider("Voyager vx rel. Jupiter [AU/yr]", -10.0, 10.0, step=0.1, key="voyager_vx")
-    voyager_vy = st.slider("Voyager vy rel. Jupiter [AU/yr]", -10.0, 10.0, step=0.1, key="voyager_vy")
-    voyager_vz = st.slider("Voyager vz rel. Jupiter [AU/yr]", -10.0, 10.0, step=0.1, key="voyager_vz")
+    st.caption("Initial position: near Earth, with a small numerical offset from Earth's center. Velocity components are relative to Earth, in AU/yr.")
+    voyager_vx = st.slider("Voyager vx rel. Earth [AU/yr]", -10.0, 10.0, step=0.1, key="voyager_vx")
+    voyager_vy = st.slider("Voyager vy rel. Earth [AU/yr]", -10.0, 10.0, step=0.1, key="voyager_vy")
+    voyager_vz = st.slider("Voyager vz rel. Earth [AU/yr]", -10.0, 10.0, step=0.1, key="voyager_vz")
 
 include_sl9 = st.sidebar.checkbox("Show Jupiter-impact comet (Shoemaker–Levy 9-like)", key="include_sl9")
 with st.sidebar.expander("Jupiter-impact comet / SL9-like body", expanded=False):
     sl9_mass_log10kg = st.slider("Comet mass: log10(m [kg])", 0.0, 30.0, step=0.1, key="sl9_mass_log10kg")
-    st.caption("Initial position: just outside Jupiter. Velocity components are relative to Jupiter, in AU/yr.")
+    st.caption("Initial position: outside Jupiter's orbit, aimed toward Jupiter by default. Velocity components are relative to Jupiter, in AU/yr.")
     sl9_vx = st.slider("Comet vx rel. Jupiter [AU/yr]", -10.0, 10.0, step=0.1, key="sl9_vx")
     sl9_vy = st.slider("Comet vy rel. Jupiter [AU/yr]", -10.0, 10.0, step=0.1, key="sl9_vy")
     sl9_vz = st.slider("Comet vz rel. Jupiter [AU/yr]", -10.0, 10.0, step=0.1, key="sl9_vz")
@@ -1046,6 +1087,7 @@ else:
 current_frame = int(st.session_state.live_frame)
 
 sizes = marker_sizes(visible_indices, size_gamma, sun_marker, planet_min, planet_max)
+fixed_axis_range = fixed_axis_range_for_view(view, planet_distance_scale)
 fig = make_figure(
     times=times,
     frames_n=frames_n,
@@ -1056,6 +1098,7 @@ fig = make_figure(
     sizes=sizes,
     animate=use_animation,
     max_animation_frames=max_animation_frames,
+    fixed_axis_range=fixed_axis_range,
 )
 st.plotly_chart(
     fig,
@@ -1064,7 +1107,7 @@ st.plotly_chart(
     config={"responsive": True, "scrollZoom": True},
 )
 st.caption(
-    "The displayed 3D axis ranges are locked during playback. "
+    "The displayed 3D axis ranges are locked by the selected planet region and are not enlarged by Voyager/comet motion. "
     "Use Plotly zoom/pan/rotate controls to change the visible region manually."
 )
 
@@ -1110,7 +1153,7 @@ if include_voyager:
             "body": BODIES[VOYAGER_IDX].name,
             "active": True,
             "mass scale / value": f"10^{voyager_mass_log10kg:.2f} kg",
-            "distance / start": "near Jupiter",
+            "distance / start": "near Earth",
             "model mass [M_sun]": masses[VOYAGER_IDX],
         }
     )
@@ -1120,7 +1163,7 @@ if include_sl9:
             "body": BODIES[SL9_IDX].name,
             "active": True,
             "mass scale / value": f"10^{sl9_mass_log10kg:.2f} kg",
-            "distance / start": "just outside Jupiter",
+            "distance / start": "outside Jupiter orbit",
             "model mass [M_sun]": masses[SL9_IDX],
         }
     )

@@ -100,3 +100,11 @@ https://your-custom-subdomain.streamlit.app
 - L. Blanchet, Living Reviews in Relativity 17, 2 (2014), DOI: 10.12942/lrr-2014-2
 - J. C. Butcher, Journal of Computational and Applied Mathematics 125, 1--29 (2000), DOI: 10.1016/S0377-0427(00)00455-6
 - W. Dehnen, Monthly Notices of the Royal Astronomical Society 324, 273--291 (2001), DOI: 10.1046/j.1365-8711.2001.04237.x
+
+## Version note: optional Voyager / SL9-like bodies
+
+This version includes optional point-mass models for a Voyager 1-like probe and a Shoemaker-Levy 9-like Jupiter-impact comet.
+
+- The Voyager-like probe starts near Earth, with a small numerical offset from Earth's center to avoid a point-mass singularity. Its velocity sliders are relative to Earth.
+- The SL9-like comet starts outside Jupiter's orbit and is aimed toward Jupiter by default. Its velocity sliders are relative to Jupiter.
+- The 3D axis box is fixed by the selected planetary region (`Inner planets`, `To Jupiter`, or `All planets`). Optional objects do not expand the box during playback. Use manual Plotly zoom/pan/rotate controls to follow objects outside the initial view.
