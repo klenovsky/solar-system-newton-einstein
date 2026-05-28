@@ -1033,7 +1033,7 @@ Volitelná sonda podobná Voyageru 1 a volitelná kometa dopadající na Jupiter
             """
 Výchozí hmotnost Voyageru vychází z hodnoty suché hmotnosti sondy uváděné NASA. NASA popisuje Voyager 1 jako misi s průletem kolem Jupiteru a Saturnu a uvádí hmotnost sondy 721.9 kg. FAQ NASA k Voyageru také uvádí, že Voyager 1 uniká ze Sluneční soustavy rychlostí přibližně 3.5 AU/rok; zde se tato hodnota používá jen jako orientační řád pro výchozí rychlostní posuvník, nikoli jako přesná historická trajektorie.
 
-Volba komety je označena jako objekt typu Shoemaker--Levy 9 dopadající na Jupiter. Je to záměrné: Halleyova kometa do Jupiteru nenarazila. Slavný pozorovaný dopad na Jupiter způsobila kometa Shoemaker--Levy 9, jejíž fragmenty dopadaly do Jupiteru mezi 16. a 22. červencem 1994. Aplikace nemodeluje vstup do atmosféry, fragmentaci, ablaci ani fyziku dopadu; integruje pouze gravitační bodovou trajektorii před takovým setkáním.
+Volba komety je označena jako objekt typu Shoemaker--Levy 9 dopadající na Jupiter. Slavný pozorovaný dopad na Jupiter způsobila právě kometa Shoemaker--Levy 9, jejíž fragmenty dopadaly do Jupiteru mezi 16. a 22. červencem 1994. Aplikace nemodeluje vstup do atmosféry, fragmentaci, ablaci ani fyziku dopadu; integruje pouze gravitační bodovou trajektorii před takovým setkáním.
 
 ### Newtonovský panel
 
@@ -1092,7 +1092,7 @@ The optional Voyager 1-like probe and the optional Jupiter-impact comet are addi
             """
 The Voyager default mass follows the NASA mission value for the spacecraft dry mass. NASA lists Voyager 1 as a Jupiter/Saturn flyby mission and gives a spacecraft mass of 721.9 kg. NASA's Voyager FAQ also states that Voyager 1 is escaping the Solar System at about 3.5 AU/yr; this is used only as a convenient order-of-magnitude default for the outward velocity slider, not as a precise historical trajectory.
 
-The comet option is labelled as a Shoemaker--Levy 9-like Jupiter-impact object. This is intentional: Comet Halley did not hit Jupiter. The famous observed Jupiter impact was Comet Shoemaker--Levy 9, whose fragments hit Jupiter between 16 and 22 July 1994. The app does not model atmospheric entry, fragmentation, ablation or impact physics; it only integrates the gravitational point-mass trajectory before such an encounter.
+The comet option is labelled as a Shoemaker--Levy 9-like Jupiter-impact object. The famous observed Jupiter impact was Comet Shoemaker--Levy 9, whose fragments hit Jupiter between 16 and 22 July 1994. The app does not model atmospheric entry, fragmentation, ablation or impact physics; it only integrates the gravitational point-mass trajectory before such an encounter.
 
 ### Newtonian panel
 
@@ -1185,7 +1185,6 @@ Pokud jsou tato čísla příliš velká, animace může být stále zajímavá,
 - NASA/JPL Solar System Dynamics, [Approximate Positions of the Planets](https://ssd.jpl.nasa.gov/planets/approx_pos.html).
 - NASA, [Voyager 1 mission page](https://science.nasa.gov/mission/voyager/voyager-1/) and [Voyager FAQ](https://science.nasa.gov/mission/voyager/frequently-asked-questions/).
 - NASA, [Comet Shoemaker--Levy 9](https://science.nasa.gov/solar-system/comets/p-shoemaker-levy-9/), k dopadům na Jupiter v červenci 1994.
-- NASA, [1P/Halley](https://science.nasa.gov/solar-system/comets/1p-halley/), pro odlišení Halleyovy komety od komety dopadlé na Jupiter.
 - A. Einstein, L. Infeld and B. Hoffmann, *The Gravitational Equations and the Problem of Motion*, Annals of Mathematics **39**, 65--100 (1938), [DOI: 10.2307/1968714](https://doi.org/10.2307/1968714).
 - L. Blanchet, *Gravitational Radiation from Post-Newtonian Sources and Inspiralling Compact Binaries*, Living Reviews in Relativity **17**, 2 (2014), [DOI: 10.12942/lrr-2014-2](https://doi.org/10.12942/lrr-2014-2).
 - J. C. Butcher, *Numerical methods for ordinary differential equations in the 20th century*, Journal of Computational and Applied Mathematics **125**, 1--29 (2000), [DOI: 10.1016/S0377-0427(00)00455-6](https://doi.org/10.1016/S0377-0427(00)00455-6).
@@ -1203,7 +1202,6 @@ If these numbers become too large, the animation can still be interesting, but i
 - NASA/JPL Solar System Dynamics, [Approximate Positions of the Planets](https://ssd.jpl.nasa.gov/planets/approx_pos.html).
 - NASA, [Voyager 1 mission page](https://science.nasa.gov/mission/voyager/voyager-1/) and [Voyager FAQ](https://science.nasa.gov/mission/voyager/frequently-asked-questions/).
 - NASA, [Comet Shoemaker--Levy 9](https://science.nasa.gov/solar-system/comets/p-shoemaker-levy-9/), documenting the July 1994 Jupiter impacts.
-- NASA, [1P/Halley](https://science.nasa.gov/solar-system/comets/1p-halley/), included to distinguish Halley from the Jupiter-impact comet.
 - A. Einstein, L. Infeld and B. Hoffmann, *The Gravitational Equations and the Problem of Motion*, Annals of Mathematics **39**, 65--100 (1938), [DOI: 10.2307/1968714](https://doi.org/10.2307/1968714).
 - L. Blanchet, *Gravitational Radiation from Post-Newtonian Sources and Inspiralling Compact Binaries*, Living Reviews in Relativity **17**, 2 (2014), [DOI: 10.12942/lrr-2014-2](https://doi.org/10.12942/lrr-2014-2).
 - J. C. Butcher, *Numerical methods for ordinary differential equations in the 20th century*, Journal of Computational and Applied Mathematics **125**, 1--29 (2000), [DOI: 10.1016/S0377-0427(00)00455-6](https://doi.org/10.1016/S0377-0427(00)00455-6).
