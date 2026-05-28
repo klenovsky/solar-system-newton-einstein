@@ -113,3 +113,8 @@ This version includes optional point-mass models for a Voyager 1-like probe and 
 ## Visibility note
 
 The Voyager 1-like probe is plotted in magenta with a dark marker outline so that it remains visible during playback on the default light Plotly background.
+
+
+## Marker outlines
+
+Only the optional Voyager-like probe and SL9-like comet use black marker outlines. The Sun and planets are displayed without black outlines so that the outline does not visually dominate the Solar-System bodies.

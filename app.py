@@ -529,6 +529,12 @@ def make_figure(
 
     colors = [BODIES[i].color for i in visible_indices]
     names = [BODIES[i].name for i in visible_indices]
+    # Only the optional small bodies get a visible black marker outline.
+    # Regular Solar-System bodies are intentionally left without outlines.
+    outline_colors = [
+        "black" if i in (VOYAGER_IDX, SL9_IDX) else "rgba(0,0,0,0)"
+        for i in visible_indices
+    ]
 
     def add_model_traces(frames: np.ndarray, scene_col: int, model_prefix: str, initial_frame: int) -> None:
         sl = trail_slice(initial_frame, trail_frames)
@@ -551,7 +557,7 @@ def make_figure(
             go.Scatter3d(
                 x=pts[:, 0], y=pts[:, 1], z=pts[:, 2],
                 mode="markers+text",
-                marker=dict(size=list(sizes), color=colors, opacity=0.98, sizemode="diameter", line=dict(color="black", width=1)),
+                marker=dict(size=list(sizes), color=colors, opacity=0.98, sizemode="diameter", line=dict(color=outline_colors, width=1)),
                 text=names,
                 textposition="top center",
                 name=f"{model_prefix} bodies",
