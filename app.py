@@ -88,7 +88,7 @@ VOYAGER_DRY_MASS_KG = 721.9
 VOYAGER_LAUNCH_MASS_KG = 815.0
 SL9_DEFAULT_MASS_KG = 1.0e13
 EXTRA_BODIES: tuple[BodyData, ...] = (
-    BodyData("Voyager 1-like probe", VOYAGER_DRY_MASS_KG / MSUN_KG, 0.005, 0.0, 0.0, 0.0, "white"),
+    BodyData("Voyager 1-like probe", VOYAGER_DRY_MASS_KG / MSUN_KG, 0.005, 0.0, 0.0, 0.0, "magenta"),
     BodyData("SL9-like Jupiter-impact comet", SL9_DEFAULT_MASS_KG / MSUN_KG, 0.5, 0.0, 0.0, 0.0, "lime"),
 )
 
@@ -551,7 +551,7 @@ def make_figure(
             go.Scatter3d(
                 x=pts[:, 0], y=pts[:, 1], z=pts[:, 2],
                 mode="markers+text",
-                marker=dict(size=list(sizes), color=colors, opacity=0.95, sizemode="diameter"),
+                marker=dict(size=list(sizes), color=colors, opacity=0.98, sizemode="diameter", line=dict(color="black", width=1)),
                 text=names,
                 textposition="top center",
                 name=f"{model_prefix} bodies",

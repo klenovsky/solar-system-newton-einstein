@@ -108,3 +108,8 @@ This version includes optional point-mass models for a Voyager 1-like probe and 
 - The Voyager-like probe starts near Earth, with a small numerical offset from Earth's center to avoid a point-mass singularity. Its velocity sliders are relative to Earth.
 - The SL9-like comet starts outside Jupiter's orbit and is aimed toward Jupiter by default. Its velocity sliders are relative to Jupiter.
 - The 3D axis box is fixed by the selected planetary region (`Inner planets`, `To Jupiter`, or `All planets`). Optional objects do not expand the box during playback. Use manual Plotly zoom/pan/rotate controls to follow objects outside the initial view.
+
+
+## Visibility note
+
+The Voyager 1-like probe is plotted in magenta with a dark marker outline so that it remains visible during playback on the default light Plotly background.
