@@ -964,12 +964,34 @@ def ensure_default_session_state() -> None:
 
 
 def reset_to_initial_values() -> None:
-    """Reset all visible controls and playback state to their default values."""
+    """Reset all visible controls and playback state to their default values.
+
+    This function must be called before keyed widgets are instantiated in the
+    current Streamlit run. Streamlit raises StreamlitAPIException if the value
+    of an already-created widget is modified through st.session_state.
+    """
     for key, value in DEFAULT_UI_VALUES.items():
         st.session_state[key] = value
     st.session_state["live_frame"] = 0
     st.session_state["running"] = False
     st.session_state.pop("last_parameter_signature", None)
+
+
+def request_reset_to_initial_values() -> None:
+    """Schedule a reset for the next run.
+
+    The reset button is clicked after some widgets may already exist in the
+    current run. Therefore the button only sets a non-widget flag and triggers
+    a rerun. At the very beginning of the next run, before widgets are created,
+    reset_to_initial_values() safely writes the widget keys.
+    """
+    st.session_state["_reset_requested"] = True
+
+
+def apply_pending_reset_if_requested() -> None:
+    """Apply a scheduled reset before any keyed widgets are created."""
+    if st.session_state.pop("_reset_requested", False):
+        reset_to_initial_values()
 
 
 # =============================================================================
@@ -978,6 +1000,7 @@ def reset_to_initial_values() -> None:
 
 st.set_page_config(page_title="Solar System: Newton vs 1PN", layout="wide")
 ensure_default_session_state()
+apply_pending_reset_if_requested()
 
 st.sidebar.selectbox("Language / Jazyk", LANGUAGE_OPTIONS, key="language")
 LANG = lang_code()
@@ -985,8 +1008,7 @@ LANG = lang_code()
 st.title(tr(LANG, "title"))
 
 st.sidebar.header(tr(LANG, "presets"))
-if st.sidebar.button(tr(LANG, "reset_initial"), use_container_width=True):
-    reset_to_initial_values()
+if st.sidebar.button(tr(LANG, "reset_initial"), use_container_width=True, on_click=request_reset_to_initial_values):
     st.rerun()
 
 
