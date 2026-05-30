@@ -1225,6 +1225,8 @@ st.sidebar.selectbox("Language / Jazyk", LANGUAGE_OPTIONS, key="language")
 LANG = lang_code()
 
 st.title(tr(LANG, "title"))
+st.caption("Build: axis-scaling + GIF export v2")
+st.sidebar.caption("Build: axis-scaling + GIF export v2")
 
 st.sidebar.header(tr(LANG, "presets"))
 if st.sidebar.button(tr(LANG, "reset_initial"), use_container_width=True, on_click=request_reset_to_initial_values):
@@ -1456,16 +1458,18 @@ with st.expander(tr(LANG, "what"), expanded=False):
 
 st.sidebar.header(tr(LANG, "global"))
 view = st.sidebar.selectbox(tr(LANG, "displayed_region"), VIEW_OPTIONS, key="view", format_func=lambda v: view_label(v, LANG))
-total_years = st.sidebar.slider(tr(LANG, "sim_time"), min_value=1.0, max_value=250.0, step=1.0, key="total_years")
-dt_days = st.sidebar.slider(tr(LANG, "rk4_dt"), min_value=1.0, max_value=30.0, step=1.0, key="dt_days")
-frame_stride = st.sidebar.slider(tr(LANG, "stride"), min_value=1, max_value=50, step=1, key="frame_stride")
-trail_frames = st.sidebar.slider(tr(LANG, "trail"), min_value=5, max_value=300, step=5, key="trail_frames")
+st.sidebar.markdown("**View-box / 3D axis scaling**" if LANG == "en" else "**Škálování 3D boxu / os**")
 axis_scaling_mode = st.sidebar.selectbox(
     tr(LANG, "axis_scaling"),
     AXIS_SCALING_OPTIONS,
     key="axis_scaling_mode",
     format_func=lambda m: axis_mode_label(m, LANG),
 )
+st.sidebar.caption(axis_mode_label(axis_scaling_mode, LANG))
+total_years = st.sidebar.slider(tr(LANG, "sim_time"), min_value=1.0, max_value=250.0, step=1.0, key="total_years")
+dt_days = st.sidebar.slider(tr(LANG, "rk4_dt"), min_value=1.0, max_value=30.0, step=1.0, key="dt_days")
+frame_stride = st.sidebar.slider(tr(LANG, "stride"), min_value=1, max_value=50, step=1, key="frame_stride")
+trail_frames = st.sidebar.slider(tr(LANG, "trail"), min_value=5, max_value=300, step=5, key="trail_frames")
 
 st.sidebar.header(tr(LANG, "pn_params"))
 log10_c = st.sidebar.slider("log10(c [AU/yr])" if LANG == "en" else "log10(c [AU/rok])", min_value=1.0, max_value=6.0, step=0.05, key="log10_c")

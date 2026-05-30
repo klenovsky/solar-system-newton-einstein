@@ -55,3 +55,8 @@ The sidebar contains `View-box scaling mode` / `Režim škálování boxu` with 
 - `Dynamic auto-fit during playback`: the 3D box is recomputed during playback and can grow or shrink as the objects move.
 
 The same mode is used for the interactive Plotly plot and for the downloadable GIF export.
+
+
+## Build marker
+
+This version displays `Build: axis-scaling + GIF export v2` in the app and sidebar. If you do not see this text after deployment, Streamlit is still serving an older app.py or another entrypoint file.
