@@ -45,3 +45,13 @@ This version includes an `Export and downloads` section below the main Plotly fi
 It can render the currently computed simulation into a downloadable animated GIF.
 The GIF is generated server-side with Matplotlib and Pillow, so rendering can take some time on Streamlit Community Cloud.
 Start with a moderate number of frames, for example 60--80.
+
+## View-box scaling
+
+The sidebar contains `View-box scaling mode` / `Režim škálování boxu` with three options:
+
+- `Fixed by selected region`: the 3D box is fixed by the selected planet region (`Inner planets`, `To Jupiter`, or `All planets`). Voyager and the comet do not enlarge the box.
+- `Fit full computed trajectory`: the 3D box is fixed once so that it contains the full computed visible trajectory, including optional bodies.
+- `Dynamic auto-fit during playback`: the 3D box is recomputed during playback and can grow or shrink as the objects move.
+
+The same mode is used for the interactive Plotly plot and for the downloadable GIF export.

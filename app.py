@@ -490,9 +490,9 @@ def planet_indices_for_view(view: str) -> list[int]:
 def fixed_axis_range_for_view(view: str, planet_distance_scale: Sequence[float]) -> tuple[float, float]:
     """Return a fixed AU range for the selected planet region.
 
-    The optional Voyager/comet bodies are intentionally ignored here.  Otherwise
-    a fast escaping probe or an incoming comet would continuously enlarge the
-    two 3D boxes and make the planets appear to shrink.  Users can still inspect
+    The optional Voyager/comet bodies are intentionally ignored in this mode.
+    Otherwise a fast escaping probe or an incoming comet could enlarge the two
+    3D boxes and make the planets appear to shrink. Users can still inspect
     objects outside the fixed box by manually zooming/panning the Plotly view.
     """
     indices = planet_indices_for_view(view)
@@ -504,6 +504,81 @@ def fixed_axis_range_for_view(view: str, planet_distance_scale: Sequence[float])
         max_r = max(max_r, PLANET_BODIES[idx].semi_major_au * max(scale, 1.0e-4))
     margin = 1.22 * max_r
     return -margin, margin
+
+
+def symmetric_axis_range_from_points(points: np.ndarray, minimum_half_range: float = 1.0) -> tuple[float, float]:
+    """Return a symmetric axis range enclosing an array of 3D points."""
+    if points.size == 0:
+        half = max(float(minimum_half_range), 1.0)
+        return -half, half
+    max_abs = float(np.nanmax(np.abs(points)))
+    if not np.isfinite(max_abs):
+        max_abs = float(minimum_half_range)
+    half = max(1.15 * max_abs, float(minimum_half_range), 1.0)
+    return -half, half
+
+
+def axis_range_for_mode(
+    mode: str,
+    view: str,
+    planet_distance_scale: Sequence[float],
+    frames_n: np.ndarray,
+    frames_p: np.ndarray,
+    visible_indices: Sequence[int],
+    frame_index: int,
+    trail_frames: int,
+) -> tuple[float, float]:
+    """Return the common 3D axis range according to the selected scaling mode.
+
+    Modes:
+    - Fixed by selected region: use only the selected planet region; Voyager and
+      the comet do not enlarge the box.
+    - Fit full computed trajectory: one constant box enclosing all computed
+      visible trajectories.
+    - Dynamic auto-fit during playback: recompute the box from the current
+      frame and visible trail.
+    """
+    fixed_range = fixed_axis_range_for_view(view, planet_distance_scale)
+    min_half = max(abs(fixed_range[0]), abs(fixed_range[1]))
+    if mode == "Fit full computed trajectory":
+        pts = np.concatenate(
+            (
+                frames_n[:, visible_indices, :].reshape((-1, 3)),
+                frames_p[:, visible_indices, :].reshape((-1, 3)),
+            ),
+            axis=0,
+        )
+        return symmetric_axis_range_from_points(pts, minimum_half_range=min_half)
+    if mode == "Dynamic auto-fit during playback":
+        fidx = int(np.clip(frame_index, 0, len(frames_n) - 1))
+        sl = trail_slice(fidx, trail_frames)
+        pts = np.concatenate(
+            (
+                frames_n[sl, visible_indices, :].reshape((-1, 3)),
+                frames_p[sl, visible_indices, :].reshape((-1, 3)),
+            ),
+            axis=0,
+        )
+        return symmetric_axis_range_from_points(pts, minimum_half_range=min_half)
+    return fixed_range
+
+
+def axis_template_from_range(axis_range: tuple[float, float], dynamic: bool = False) -> dict:
+    axis_min, axis_max = axis_range
+    axis_common = dict(
+        autorange=False,
+        range=[float(axis_min), float(axis_max)],
+        showspikes=False,
+    )
+    template = dict(
+        xaxis=dict(title="x [AU]", **axis_common),
+        yaxis=dict(title="y [AU]", **axis_common),
+        zaxis=dict(title="z [AU]", **axis_common),
+        aspectmode="cube",
+    )
+    if not dynamic:
+        template["uirevision"] = PLOT_UIREVISION
+    return template
 
 
 def trail_slice(frame: int, trail_frames: int) -> slice:
@@ -557,6 +632,10 @@ UI_TEXT = {
         "rk4_dt": "RK4 time step [days]",
         "stride": "Integration steps per displayed frame",
         "trail": "Trail length [displayed frames]",
+        "axis_scaling": "View-box scaling mode",
+        "axis_fixed": "Fixed by selected region",
+        "axis_full": "Fit full computed trajectory",
+        "axis_dynamic": "Dynamic auto-fit during playback",
         "pn_params": "1PN parameters",
         "c_caption": "c = {c:,.1f} AU/yr; physical c ≈ {cphys:,.1f} AU/yr",
         "pn_caption": "1PN multiplier = {val:.3g}",
@@ -602,7 +681,7 @@ UI_TEXT = {
         "status": "Status: {status}; frame {frame}/{total}; t = {time:.2f} yr",
         "need_autorefresh": "Live playback requires the optional package streamlit-autorefresh. Install it or use the Plotly Play button in the chart.",
         "displayed_frame": "Displayed time frame",
-        "axes_caption": "The displayed 3D axis ranges are locked by the selected planet region and are not enlarged by Voyager/comet motion. Use Plotly zoom/pan/rotate controls to change the visible region manually.",
+        "axes_caption": "View-box mode: {mode}. In the fixed mode, the 3D axis range is set by the selected planet region and is not enlarged by Voyager/comet motion. In the full-trajectory and dynamic modes, the box may include the optional bodies. Use Plotly zoom/pan/rotate controls for manual viewing.",
         "displayed_time": "Displayed time",
         "sun_mass_scale": "Sun mass scale",
         "onepn_multiplier": "1PN multiplier",
@@ -637,6 +716,10 @@ UI_TEXT = {
         "rk4_dt": "Časový krok RK4 [dny]",
         "stride": "Integračních kroků na zobrazený snímek",
         "trail": "Délka stopy [zobrazené snímky]",
+        "axis_scaling": "Režim škálování boxu",
+        "axis_fixed": "Pevně podle vybrané oblasti",
+        "axis_full": "Přizpůsobit celé spočtené trajektorii",
+        "axis_dynamic": "Dynamický auto-fit během přehrávání",
         "pn_params": "Parametry 1PN",
         "c_caption": "c = {c:,.1f} AU/rok; fyzikální c ≈ {cphys:,.1f} AU/rok",
         "pn_caption": "Násobek 1PN = {val:.3g}",
@@ -682,7 +765,7 @@ UI_TEXT = {
         "status": "Stav: {status}; snímek {frame}/{total}; t = {time:.2f} roku",
         "need_autorefresh": "Živé přehrávání vyžaduje volitelný balíček streamlit-autorefresh. Nainstalujte jej nebo použijte tlačítko Plotly Play v grafu.",
         "displayed_frame": "Zobrazený časový snímek",
-        "axes_caption": "Rozsahy 3D os jsou zamčené podle vybrané oblasti planet a nezvětšují se pohybem Voyageru/komety. Viditelnou oblast změňte ručně pomocí ovládání Plotly pro zoom/pan/rotaci.",
+        "axes_caption": "Režim boxu: {mode}. V pevném režimu je rozsah 3D os určen vybranou oblastí planet a nezvětšuje se pohybem Voyageru/komety. V režimu celé trajektorie a dynamického auto-fitu může box zahrnovat i volitelná tělesa. Viditelnou oblast lze měnit ručně pomocí zoomu/panu/rotace Plotly.",
         "displayed_time": "Zobrazený čas",
         "sun_mass_scale": "Škálování hmotnosti Slunce",
         "onepn_multiplier": "Násobek 1PN",
@@ -722,6 +805,15 @@ def view_label(view: str, lang: str) -> str:
     return VIEW_LABELS[lang].get(view, view)
 
 
+def axis_mode_label(mode: str, lang: str) -> str:
+    mapping = {
+        "Fixed by selected region": tr(lang, "axis_fixed"),
+        "Fit full computed trajectory": tr(lang, "axis_full"),
+        "Dynamic auto-fit during playback": tr(lang, "axis_dynamic"),
+    }
+    return mapping.get(mode, mode)
+
+
 def body_display_name(body: BodyData | str, lang: str) -> str:
     name = body.name if isinstance(body, BodyData) else str(body)
     return BODY_NAME_CS.get(name, name) if lang == "cs" else name
@@ -736,7 +828,9 @@ def make_figure(
     sizes: Sequence[float],
     animate: bool,
     max_animation_frames: int,
-    fixed_axis_range: tuple[float, float],
+    axis_scaling_mode: str,
+    view: str,
+    planet_distance_scale: Sequence[float],
     lang: str = "en",
 ) -> go.Figure:
     """Build static or animated Plotly figure."""
@@ -792,32 +886,23 @@ def make_figure(
     add_model_traces(frames_n, 1, "Newton", frame_index)
     add_model_traces(frames_p, 2, "1PN", frame_index)
 
-    axis_min, axis_max = fixed_axis_range
-    # The axis limits are fixed by the selected planet region, not by the current
-    # positions of optional bodies.  This prevents Voyager/comet trajectories
-    # from stretching the 3D boxes during playback.  Users can still change the
-    # view manually with Plotly zoom/pan/rotate controls.
-    axis_common = dict(
-        autorange=False,
-        range=[axis_min, axis_max],
-        showspikes=False,
+    dynamic_axes = axis_scaling_mode == "Dynamic auto-fit during playback"
+    initial_axis_range = axis_range_for_mode(
+        axis_scaling_mode, view, planet_distance_scale, frames_n, frames_p,
+        visible_indices, frame_index, trail_frames
     )
-    axis_template = dict(
-        xaxis=dict(title="x [AU]", **axis_common),
-        yaxis=dict(title="y [AU]", **axis_common),
-        zaxis=dict(title="z [AU]", **axis_common),
-        aspectmode="cube",
-        uirevision=PLOT_UIREVISION,
-    )
-    fig.update_layout(
+    axis_template = axis_template_from_range(initial_axis_range, dynamic=dynamic_axes)
+    layout_kwargs = dict(
         scene=axis_template,
         scene2=axis_template,
         height=760,
         margin=dict(l=5, r=5, t=70, b=5),
         title=tr(lang, "fig_title"),
-        uirevision=PLOT_UIREVISION,
         transition=dict(duration=0),
     )
+    if not dynamic_axes:
+        layout_kwargs["uirevision"] = PLOT_UIREVISION
+    fig.update_layout(**layout_kwargs)
 
     if animate:
         n_total_frames = len(times)
@@ -839,10 +924,20 @@ def make_figure(
                     frame_data.append(go.Scatter3d(x=xyz[:, 0], y=xyz[:, 1], z=xyz[:, 2]))
                 pts = frames[fidx, visible_indices, :]
                 frame_data.append(go.Scatter3d(x=pts[:, 0], y=pts[:, 1], z=pts[:, 2], text=names))
+            frame_axis_template = axis_template
+            frame_layout_kwargs = {}
+            if dynamic_axes:
+                frame_axis_range = axis_range_for_mode(
+                    axis_scaling_mode, view, planet_distance_scale, frames_n, frames_p,
+                    visible_indices, fidx, trail_frames
+                )
+                frame_axis_template = axis_template_from_range(frame_axis_range, dynamic=True)
+            else:
+                frame_layout_kwargs["uirevision"] = PLOT_UIREVISION
             frame_layout = go.Layout(
-                scene=axis_template,
-                scene2=axis_template,
-                uirevision=PLOT_UIREVISION,
+                scene=frame_axis_template,
+                scene2=frame_axis_template,
+                **frame_layout_kwargs,
             )
             animation_frames.append(
                 go.Frame(
@@ -896,6 +991,8 @@ def make_figure(
 # =============================================================================
 
 VIEW_OPTIONS = ("Inner planets", "To Jupiter", "All planets")
+AXIS_SCALING_OPTIONS = ("Fixed by selected region", "Fit full computed trajectory", "Dynamic auto-fit during playback")
+
 
 
 def default_orbit_unit_vectors(body_index: int) -> tuple[np.ndarray, np.ndarray]:
@@ -931,6 +1028,7 @@ DEFAULT_UI_VALUES: dict[str, object] = {
     "dt_days": 5.0,
     "frame_stride": 4,
     "trail_frames": 80,
+    "axis_scaling_mode": "Fixed by selected region",
     "log10_c": math.log10(C_REAL_AU_PER_YR),
     "pn_log10": 0.0,
     "size_gamma": 0.25,
@@ -1010,7 +1108,9 @@ def render_solar_system_gif(
     frames_p: np.ndarray,
     visible_indices: Sequence[int],
     sizes: Sequence[float],
-    fixed_axis_range: tuple[float, float],
+    axis_scaling_mode: str,
+    view: str,
+    planet_distance_scale: Sequence[float],
     trail_frames: int,
     gif_frame_count: int,
     gif_fps: int,
@@ -1042,12 +1142,16 @@ def render_solar_system_gif(
     ax_p = fig.add_subplot(1, 2, 2, projection="3d")
     axes = (ax_n, ax_p)
 
-    axis_min, axis_max = fixed_axis_range
+    dynamic_axes = axis_scaling_mode == "Dynamic auto-fit during playback"
+    initial_axis_min, initial_axis_max = axis_range_for_mode(
+        axis_scaling_mode, view, planet_distance_scale, frames_n, frames_p,
+        visible_indices, int(selected[0]), trail_frames
+    )
     for ax, title in zip(axes, (title_left, title_right)):
         ax.set_title(title)
-        ax.set_xlim(axis_min, axis_max)
-        ax.set_ylim(axis_min, axis_max)
-        ax.set_zlim(axis_min, axis_max)
+        ax.set_xlim(initial_axis_min, initial_axis_max)
+        ax.set_ylim(initial_axis_min, initial_axis_max)
+        ax.set_zlim(initial_axis_min, initial_axis_max)
         ax.set_xlabel("x [AU]")
         ax.set_ylabel("y [AU]")
         ax.set_zlabel("z [AU]")
@@ -1082,6 +1186,15 @@ def render_solar_system_gif(
     def update(k: int):
         fidx = int(selected[k])
         sl = trail_slice(fidx, trail_frames)
+        if dynamic_axes:
+            axis_min, axis_max = axis_range_for_mode(
+                axis_scaling_mode, view, planet_distance_scale, frames_n, frames_p,
+                visible_indices, fidx, trail_frames
+            )
+            for ax in axes:
+                ax.set_xlim(axis_min, axis_max)
+                ax.set_ylim(axis_min, axis_max)
+                ax.set_zlim(axis_min, axis_max)
         for model_index, frames in enumerate((frames_n, frames_p)):
             for local_i, idx in enumerate(visible_indices):
                 xyz = frames[sl, idx, :]
@@ -1347,6 +1460,12 @@ total_years = st.sidebar.slider(tr(LANG, "sim_time"), min_value=1.0, max_value=2
 dt_days = st.sidebar.slider(tr(LANG, "rk4_dt"), min_value=1.0, max_value=30.0, step=1.0, key="dt_days")
 frame_stride = st.sidebar.slider(tr(LANG, "stride"), min_value=1, max_value=50, step=1, key="frame_stride")
 trail_frames = st.sidebar.slider(tr(LANG, "trail"), min_value=5, max_value=300, step=5, key="trail_frames")
+axis_scaling_mode = st.sidebar.selectbox(
+    tr(LANG, "axis_scaling"),
+    AXIS_SCALING_OPTIONS,
+    key="axis_scaling_mode",
+    format_func=lambda m: axis_mode_label(m, LANG),
+)
 
 st.sidebar.header(tr(LANG, "pn_params"))
 log10_c = st.sidebar.slider("log10(c [AU/yr])" if LANG == "en" else "log10(c [AU/rok])", min_value=1.0, max_value=6.0, step=0.05, key="log10_c")
@@ -1430,7 +1549,7 @@ with st.spinner(tr(LANG, "spinner")):
 visible_indices = visible_body_indices(view, bool(include_voyager), bool(include_sl9))
 
 parameter_signature = repr((
-    view, total_years, dt_days, frame_stride, trail_frames,
+    view, total_years, dt_days, frame_stride, trail_frames, axis_scaling_mode,
     log10_c, pn_log10, size_gamma, sun_marker, planet_min, planet_max,
     sun_mass_log10, tuple(planet_mass_log10), tuple(planet_distance_scale),
     include_voyager, voyager_mass_log10kg, voyager_vx, voyager_vy, voyager_vz,
@@ -1488,7 +1607,6 @@ else:
 current_frame = int(st.session_state.live_frame)
 
 sizes = marker_sizes(visible_indices, size_gamma, sun_marker, planet_min, planet_max)
-fixed_axis_range = fixed_axis_range_for_view(view, planet_distance_scale)
 fig = make_figure(
     times=times,
     frames_n=frames_n,
@@ -1499,7 +1617,9 @@ fig = make_figure(
     sizes=sizes,
     animate=use_animation,
     max_animation_frames=max_animation_frames,
-    fixed_axis_range=fixed_axis_range,
+    axis_scaling_mode=axis_scaling_mode,
+    view=view,
+    planet_distance_scale=planet_distance_scale,
     lang=LANG,
 )
 st.plotly_chart(
@@ -1508,7 +1628,7 @@ st.plotly_chart(
     key="solar_system_fixed_axis_plot",
     config={"responsive": True, "scrollZoom": True},
 )
-st.caption(tr(LANG, "axes_caption"))
+st.caption(tr(LANG, "axes_caption", mode=axis_mode_label(axis_scaling_mode, LANG)))
 
 st.subheader("Export and downloads" if LANG == "en" else "Export a stažení")
 export_help = (
@@ -1551,7 +1671,9 @@ if make_gif:
             frames_p=frames_p,
             visible_indices=visible_indices,
             sizes=sizes,
-            fixed_axis_range=fixed_axis_range,
+            axis_scaling_mode=axis_scaling_mode,
+            view=view,
+            planet_distance_scale=planet_distance_scale,
             trail_frames=trail_frames,
             gif_frame_count=int(gif_frames),
             gif_fps=int(gif_fps),
