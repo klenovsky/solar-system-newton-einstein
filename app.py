@@ -670,6 +670,8 @@ UI_TEXT = {
         "loop": "Loop live playback",
         "plotly_play": "Also create Plotly chart Play button",
         "max_plotly": "Max Plotly animation frames",
+        "apply_recompute": "Apply and recompute",
+        "apply_help": "Change sliders freely; the trajectories are recomputed only after pressing Apply and recompute.",
         "too_many_steps": "The selected time span and time step would require more than 20,000 RK4 steps. Increase the time step, shorten the simulated time, or increase steps per displayed frame.",
         "spinner": "Integrating Newton and 1PN trajectories...",
         "live_playback": "Live playback",
@@ -754,6 +756,8 @@ UI_TEXT = {
         "loop": "Opakovat živé přehrávání ve smyčce",
         "plotly_play": "Vytvořit také tlačítko Play přímo v grafu Plotly",
         "max_plotly": "Maximální počet snímků animace Plotly",
+        "apply_recompute": "Použít a přepočítat",
+        "apply_help": "Slidery lze měnit libovolně; trajektorie se přepočítají až po stisku Použít a přepočítat.",
         "too_many_steps": "Zvolený časový rozsah a časový krok by vyžadovaly více než 20 000 kroků RK4. Zvětšete časový krok, zkraťte simulovaný čas nebo zvětšete počet kroků na zobrazený snímek.",
         "spinner": "Integruji trajektorie Newtonova a 1PN modelu...",
         "live_playback": "Živé přehrávání",
@@ -1225,8 +1229,8 @@ st.sidebar.selectbox("Language / Jazyk", LANGUAGE_OPTIONS, key="language")
 LANG = lang_code()
 
 st.title(tr(LANG, "title"))
-st.caption("Build: axis-scaling + GIF export v2")
-st.sidebar.caption("Build: axis-scaling + GIF export v2")
+st.caption("Build: axis-scaling + GIF export + Apply v3")
+st.sidebar.caption("Build: axis-scaling + GIF export + Apply v3")
 
 st.sidebar.header(tr(LANG, "presets"))
 if st.sidebar.button(tr(LANG, "reset_initial"), use_container_width=True, on_click=request_reset_to_initial_values):
@@ -1422,6 +1426,19 @@ The displayed diagnostics estimate the two small parameters that should remain s
             """
 Pokud jsou tato čísla příliš velká, animace může být stále zajímavá, ale už nejde o kvantitativně spolehlivý slabopolní a pomalý relativistický model.
 
+### Jak aplikaci používat
+
+1. V levém panelu zvolte jazyk a základní oblast zobrazení: vnitřní planety, oblast po Jupiter, nebo celou Sluneční soustavu.
+2. V části **Režim škálování boxu** určete, zda má být 3D box pevný podle vybrané oblasti, jednorázově přizpůsoben celé spočtené trajektorii, nebo dynamicky měněn během přehrávání. Pevný režim je nejlepší, pokud chcete stabilní zoom a porovnání levého a pravého panelu.
+3. Upravte délku simulace, časový krok RK4 a délku zobrazených stop. Menší časový krok je přesnější, ale výpočetně pomalejší.
+4. V části **Parametry 1PN** lze změnit efektivní rychlost světla a násobek 1PN korekce. Fyzikálně nejčistší volba je skutečná hodnota `c` a násobek 1. Větší násobek 1PN je pouze vizuální lupa na relativistickou korekci.
+5. V částech hmotností a vzdáleností lze škálovat hmotnost Slunce, hmotnosti jednotlivých planet a jejich počáteční vzdálenosti od Slunce.
+6. Volitelně lze přidat sondu podobnou Voyageru 1 a kometu typu Shoemaker--Levy 9. Jejich hmotnost a počáteční rychlostní složky se nastavují samostatně.
+7. Po změně parametrů stiskněte **Použít a přepočítat**. Aplikace díky tomu nepřepočítává dráhy při každém pohybu sliderem, ale až na vyžádání.
+8. Poté použijte **Spustit**, **Pauza** a **Reset** pro živé přehrávání. Alternativně lze použít také tlačítko Play přímo v Plotly grafu.
+9. Graf lze ručně otáčet, přibližovat a posouvat. V pevném režimu se ruční zoom během přehrávání nemá přepisovat automatickým škálováním os.
+10. V části **Export a stažení** lze vytvořit animovaný GIF aktuálně spočteného průběhu. Větší počet snímků dává hladší video, ale generování je pomalejší.
+
 ### Reference
 
 - NASA/JPL Solar System Dynamics, [Planetary Physical Parameters](https://ssd.jpl.nasa.gov/planets/phys_par.html).
@@ -1438,6 +1455,19 @@ Pokud jsou tato čísla příliš velká, animace může být stále zajímavá,
         st.markdown(
             """
 If these numbers become too large, the animation can still be interesting, but it is no longer a quantitatively reliable weak-field, slow-motion relativistic model.
+
+### How to use the app
+
+1. Use the left sidebar to choose the language and the displayed region: inner planets, out to Jupiter, or all planets.
+2. In **View-box scaling mode**, choose whether the 3D box should remain fixed by the selected region, fit the full computed trajectory once, or dynamically auto-fit during playback. The fixed mode is best for stable zooming and for comparing the left and right panels.
+3. Set the simulated time, RK4 time step, and trail length. A smaller RK4 time step is more accurate but slower.
+4. In **1PN parameters**, tune the effective speed of light and the 1PN multiplier. The physically clean choice is the real value of `c` and multiplier 1. A larger 1PN multiplier is only a visual magnifier for the relativistic correction.
+5. In the mass and distance controls, rescale the Sun mass, individual planet masses, and individual initial distances from the Sun.
+6. Optionally add a Voyager 1-like probe and a Shoemaker--Levy 9-like comet. Their mass and initial velocity components are controlled separately.
+7. After changing parameters, press **Apply and recompute**. This prevents the app from recomputing the trajectories after every slider movement.
+8. Then use **Start**, **Pause**, and **Reset** for live playback. Alternatively, use the Plotly Play button inside the chart.
+9. The 3D chart can be manually rotated, zoomed, and panned. In fixed view-box mode, the manual zoom should not be overwritten by automatic axis rescaling during playback.
+10. In **Export and downloads**, generate an animated GIF of the currently computed simulation. More GIF frames give a smoother video, but rendering takes longer.
 
 ### References
 
@@ -1456,73 +1486,80 @@ If these numbers become too large, the animation can still be interesting, but i
 with st.expander(tr(LANG, "what"), expanded=False):
     render_model_description(LANG)
 
-st.sidebar.header(tr(LANG, "global"))
-view = st.sidebar.selectbox(tr(LANG, "displayed_region"), VIEW_OPTIONS, key="view", format_func=lambda v: view_label(v, LANG))
-st.sidebar.markdown("**View-box / 3D axis scaling**" if LANG == "en" else "**Škálování 3D boxu / os**")
-axis_scaling_mode = st.sidebar.selectbox(
-    tr(LANG, "axis_scaling"),
-    AXIS_SCALING_OPTIONS,
-    key="axis_scaling_mode",
-    format_func=lambda m: axis_mode_label(m, LANG),
-)
-st.sidebar.caption(axis_mode_label(axis_scaling_mode, LANG))
-total_years = st.sidebar.slider(tr(LANG, "sim_time"), min_value=1.0, max_value=250.0, step=1.0, key="total_years")
-dt_days = st.sidebar.slider(tr(LANG, "rk4_dt"), min_value=1.0, max_value=30.0, step=1.0, key="dt_days")
-frame_stride = st.sidebar.slider(tr(LANG, "stride"), min_value=1, max_value=50, step=1, key="frame_stride")
-trail_frames = st.sidebar.slider(tr(LANG, "trail"), min_value=5, max_value=300, step=5, key="trail_frames")
+with st.sidebar.form("solar_controls_form"):
+    st.caption(tr(LANG, "apply_help"))
+    st.header(tr(LANG, "global"))
+    view = st.selectbox(tr(LANG, "displayed_region"), VIEW_OPTIONS, key="view", format_func=lambda v: view_label(v, LANG))
+    st.markdown("**View-box / 3D axis scaling**" if LANG == "en" else "**Škálování 3D boxu / os**")
+    axis_scaling_mode = st.selectbox(
+        tr(LANG, "axis_scaling"),
+        AXIS_SCALING_OPTIONS,
+        key="axis_scaling_mode",
+        format_func=lambda m: axis_mode_label(m, LANG),
+    )
+    st.caption(axis_mode_label(axis_scaling_mode, LANG))
+    total_years = st.slider(tr(LANG, "sim_time"), min_value=1.0, max_value=250.0, step=1.0, key="total_years")
+    dt_days = st.slider(tr(LANG, "rk4_dt"), min_value=1.0, max_value=30.0, step=1.0, key="dt_days")
+    frame_stride = st.slider(tr(LANG, "stride"), min_value=1, max_value=50, step=1, key="frame_stride")
+    trail_frames = st.slider(tr(LANG, "trail"), min_value=5, max_value=300, step=5, key="trail_frames")
 
-st.sidebar.header(tr(LANG, "pn_params"))
-log10_c = st.sidebar.slider("log10(c [AU/yr])" if LANG == "en" else "log10(c [AU/rok])", min_value=1.0, max_value=6.0, step=0.05, key="log10_c")
-c_value = 10.0 ** log10_c
-st.sidebar.caption(tr(LANG, "c_caption", c=c_value, cphys=C_REAL_AU_PER_YR))
-pn_log10 = st.sidebar.slider("log10(1PN multiplier)" if LANG == "en" else "log10(násobku 1PN)", min_value=-3.0, max_value=6.0, step=0.1, key="pn_log10")
-st.sidebar.caption(tr(LANG, "pn_caption", val=10.0 ** pn_log10))
+    st.header(tr(LANG, "pn_params"))
+    log10_c = st.slider("log10(c [AU/yr])" if LANG == "en" else "log10(c [AU/rok])", min_value=1.0, max_value=6.0, step=0.05, key="log10_c")
+    c_value = 10.0 ** log10_c
+    st.caption(tr(LANG, "c_caption", c=c_value, cphys=C_REAL_AU_PER_YR))
+    pn_log10 = st.slider("log10(1PN multiplier)" if LANG == "en" else "log10(násobku 1PN)", min_value=-3.0, max_value=6.0, step=0.1, key="pn_log10")
+    st.caption(tr(LANG, "pn_caption", val=10.0 ** pn_log10))
 
-st.sidebar.header(tr(LANG, "display_sizes"))
-size_gamma = st.sidebar.slider(tr(LANG, "gamma"), 0.05, 0.80, step=0.05, key="size_gamma")
-sun_marker = st.sidebar.slider(tr(LANG, "sun_marker"), 2.0, 20.0, step=0.5, key="sun_marker")
-planet_min = st.sidebar.slider(tr(LANG, "planet_min"), 3.0, 14.0, step=0.5, key="planet_min")
-planet_max = st.sidebar.slider(tr(LANG, "planet_max"), 5.0, 25.0, step=0.5, key="planet_max")
+    st.header(tr(LANG, "display_sizes"))
+    size_gamma = st.slider(tr(LANG, "gamma"), 0.05, 0.80, step=0.05, key="size_gamma")
+    sun_marker = st.slider(tr(LANG, "sun_marker"), 2.0, 20.0, step=0.5, key="sun_marker")
+    planet_min = st.slider(tr(LANG, "planet_min"), 3.0, 14.0, step=0.5, key="planet_min")
+    planet_max = st.slider(tr(LANG, "planet_max"), 5.0, 25.0, step=0.5, key="planet_max")
 
-st.sidebar.header(tr(LANG, "mass_scaling"))
-sun_mass_log10 = st.sidebar.slider(tr(LANG, "sun_mass"), -3.0, 3.0, step=0.1, key="sun_mass_log10")
-planet_mass_log10 = []
-with st.sidebar.expander(tr(LANG, "planet_masses"), expanded=False):
-    for name in PLANET_NAMES:
-        planet_mass_log10.append(st.slider(f"{body_display_name(name, LANG)}: log10(M/M_real)", -3.0, 6.0, step=0.1, key=f"mass_{name}"))
+    st.header(tr(LANG, "mass_scaling"))
+    sun_mass_log10 = st.slider(tr(LANG, "sun_mass"), -3.0, 3.0, step=0.1, key="sun_mass_log10")
+    planet_mass_log10 = []
+    with st.expander(tr(LANG, "planet_masses"), expanded=False):
+        for name in PLANET_NAMES:
+            planet_mass_log10.append(st.slider(f"{body_display_name(name, LANG)}: log10(M/M_real)", -3.0, 6.0, step=0.1, key=f"mass_{name}"))
 
-planet_distance_scale = []
-with st.sidebar.expander(tr(LANG, "planet_distances"), expanded=False):
-    for name in PLANET_NAMES:
-        planet_distance_scale.append(st.slider(f"{body_display_name(name, LANG)}: a/a_real", 0.10, 5.00, step=0.05, key=f"dist_{name}"))
+    planet_distance_scale = []
+    with st.expander(tr(LANG, "planet_distances"), expanded=False):
+        for name in PLANET_NAMES:
+            planet_distance_scale.append(st.slider(f"{body_display_name(name, LANG)}: a/a_real", 0.10, 5.00, step=0.05, key=f"dist_{name}"))
 
-st.sidebar.header(tr(LANG, "optional"))
-include_voyager = st.sidebar.checkbox(tr(LANG, "show_voyager"), key="include_voyager")
-with st.sidebar.expander(tr(LANG, "voyager_title"), expanded=False):
-    voyager_mass_log10kg = st.slider(tr(LANG, "voyager_mass"), 0.0, 30.0, step=0.1, key="voyager_mass_log10kg")
-    st.caption(tr(LANG, "voyager_caption"))
-    voyager_vx = st.slider(tr(LANG, "voyager_vx"), -10.0, 10.0, step=0.1, key="voyager_vx")
-    voyager_vy = st.slider(tr(LANG, "voyager_vy"), -10.0, 10.0, step=0.1, key="voyager_vy")
-    voyager_vz = st.slider(tr(LANG, "voyager_vz"), -10.0, 10.0, step=0.1, key="voyager_vz")
+    st.header(tr(LANG, "optional"))
+    include_voyager = st.checkbox(tr(LANG, "show_voyager"), key="include_voyager")
+    with st.expander(tr(LANG, "voyager_title"), expanded=False):
+        voyager_mass_log10kg = st.slider(tr(LANG, "voyager_mass"), 0.0, 30.0, step=0.1, key="voyager_mass_log10kg")
+        st.caption(tr(LANG, "voyager_caption"))
+        voyager_vx = st.slider(tr(LANG, "voyager_vx"), -10.0, 10.0, step=0.1, key="voyager_vx")
+        voyager_vy = st.slider(tr(LANG, "voyager_vy"), -10.0, 10.0, step=0.1, key="voyager_vy")
+        voyager_vz = st.slider(tr(LANG, "voyager_vz"), -10.0, 10.0, step=0.1, key="voyager_vz")
 
-include_sl9 = st.sidebar.checkbox(tr(LANG, "show_sl9"), key="include_sl9")
-with st.sidebar.expander(tr(LANG, "sl9_title"), expanded=False):
-    sl9_mass_log10kg = st.slider(tr(LANG, "comet_mass"), 0.0, 30.0, step=0.1, key="sl9_mass_log10kg")
-    st.caption(tr(LANG, "sl9_caption"))
-    sl9_vx = st.slider(tr(LANG, "comet_vx"), -10.0, 10.0, step=0.1, key="sl9_vx")
-    sl9_vy = st.slider(tr(LANG, "comet_vy"), -10.0, 10.0, step=0.1, key="sl9_vy")
-    sl9_vz = st.slider(tr(LANG, "comet_vz"), -10.0, 10.0, step=0.1, key="sl9_vz")
+    include_sl9 = st.checkbox(tr(LANG, "show_sl9"), key="include_sl9")
+    with st.expander(tr(LANG, "sl9_title"), expanded=False):
+        sl9_mass_log10kg = st.slider(tr(LANG, "comet_mass"), 0.0, 30.0, step=0.1, key="sl9_mass_log10kg")
+        st.caption(tr(LANG, "sl9_caption"))
+        sl9_vx = st.slider(tr(LANG, "comet_vx"), -10.0, 10.0, step=0.1, key="sl9_vx")
+        sl9_vy = st.slider(tr(LANG, "comet_vy"), -10.0, 10.0, step=0.1, key="sl9_vy")
+        sl9_vz = st.slider(tr(LANG, "comet_vz"), -10.0, 10.0, step=0.1, key="sl9_vz")
 
-st.sidebar.header(tr(LANG, "playback"))
-frame_estimate = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR) / max(frame_stride, 1))) + 1
-n_step_estimate = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR)))
-st.sidebar.caption(tr(LANG, "step_caption", steps=n_step_estimate, frames=frame_estimate))
+    st.header(tr(LANG, "playback"))
+    frame_estimate = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR) / max(frame_stride, 1))) + 1
+    n_step_estimate = int(math.ceil(total_years / (dt_days / DAYS_PER_YEAR)))
+    st.caption(tr(LANG, "step_caption", steps=n_step_estimate, frames=frame_estimate))
 
-live_interval_ms = st.sidebar.slider(tr(LANG, "live_refresh"), 100, 2000, step=50, key="live_interval_ms")
-frames_per_refresh = st.sidebar.slider(tr(LANG, "frames_refresh"), 1, 20, step=1, key="frames_per_refresh")
-loop_playback = st.sidebar.checkbox(tr(LANG, "loop"), key="loop_playback")
-use_animation = st.sidebar.checkbox(tr(LANG, "plotly_play"), key="use_animation")
-max_animation_frames = st.sidebar.slider(tr(LANG, "max_plotly"), 20, 250, step=10, key="max_animation_frames")
+    live_interval_ms = st.slider(tr(LANG, "live_refresh"), 100, 2000, step=50, key="live_interval_ms")
+    frames_per_refresh = st.slider(tr(LANG, "frames_refresh"), 1, 20, step=1, key="frames_per_refresh")
+    loop_playback = st.checkbox(tr(LANG, "loop"), key="loop_playback")
+    use_animation = st.checkbox(tr(LANG, "plotly_play"), key="use_animation")
+    max_animation_frames = st.slider(tr(LANG, "max_plotly"), 20, 250, step=10, key="max_animation_frames")
+    apply_submitted = st.form_submit_button(tr(LANG, "apply_recompute"), use_container_width=True)
+
+if apply_submitted:
+    st.session_state.live_frame = 0
+    st.session_state.running = False
 
 if n_step_estimate > 20_000:
     st.error(tr(LANG, "too_many_steps"))

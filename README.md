@@ -59,4 +59,9 @@ The same mode is used for the interactive Plotly plot and for the downloadable G
 
 ## Build marker
 
-This version displays `Build: axis-scaling + GIF export v2` in the app and sidebar. If you do not see this text after deployment, Streamlit is still serving an older app.py or another entrypoint file.
+This version displays `Build: axis-scaling + GIF export + Apply v3` in the app and sidebar. If you do not see this text after deployment, Streamlit is still serving an older app.py or another entrypoint file.
+
+
+## Apply and recompute
+
+The sidebar controls are grouped in a form. Parameter changes are applied only after pressing `Apply and recompute`, which prevents expensive trajectory recalculation after every slider movement.
