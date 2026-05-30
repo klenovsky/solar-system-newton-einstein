@@ -38,3 +38,10 @@ Language / Jazyk
 ```
 
 Choose `English` or `Čeština`. English is the default and `Reset to initial values` returns the app to English.
+
+## GIF export
+
+This version includes an `Export and downloads` section below the main Plotly figure.
+It can render the currently computed simulation into a downloadable animated GIF.
+The GIF is generated server-side with Matplotlib and Pillow, so rendering can take some time on Streamlit Community Cloud.
+Start with a moderate number of frames, for example 60--80.

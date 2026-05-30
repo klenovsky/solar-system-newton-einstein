@@ -27,8 +27,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterable, Sequence
 import math
+import tempfile
 
 import numpy as np
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation, PillowWriter
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import streamlit as st
@@ -994,6 +999,107 @@ def apply_pending_reset_if_requested() -> None:
         reset_to_initial_values()
 
 
+
+# =============================================================================
+# Export helpers
+# =============================================================================
+
+def render_solar_system_gif(
+    times: np.ndarray,
+    frames_n: np.ndarray,
+    frames_p: np.ndarray,
+    visible_indices: Sequence[int],
+    sizes: Sequence[float],
+    fixed_axis_range: tuple[float, float],
+    trail_frames: int,
+    gif_frame_count: int,
+    gif_fps: int,
+    lang: str,
+) -> bytes:
+    """Render the current Newton/1PN simulation as an animated GIF.
+
+    The GIF export is intentionally separate from the interactive Plotly chart.
+    Plotly is used for browser interaction, while Matplotlib/Pillow are used to
+    create a downloadable animation file on demand.  This avoids requiring
+    browser-side screen recording and avoids an ffmpeg dependency on Streamlit
+    Cloud.
+    """
+    if len(times) == 0:
+        raise ValueError("no frames available for GIF export")
+
+    gif_frame_count = int(max(2, min(gif_frame_count, len(times))))
+    gif_fps = int(max(1, gif_fps))
+    selected = np.linspace(0, len(times) - 1, gif_frame_count).astype(int)
+    selected = np.unique(selected)
+
+    title_left = "Newton gravity" if lang == "en" else "Newtonova gravitace"
+    title_right = "Einstein GTR 1PN approximation" if lang == "en" else "Einsteinova OTR 1PN aproximace"
+    main_title = "Solar-System model" if lang == "en" else "Model Sluneční soustavy"
+    time_label = "t" if lang == "en" else "t"
+
+    fig = plt.figure(figsize=(12.5, 6.2), dpi=110)
+    ax_n = fig.add_subplot(1, 2, 1, projection="3d")
+    ax_p = fig.add_subplot(1, 2, 2, projection="3d")
+    axes = (ax_n, ax_p)
+
+    axis_min, axis_max = fixed_axis_range
+    for ax, title in zip(axes, (title_left, title_right)):
+        ax.set_title(title)
+        ax.set_xlim(axis_min, axis_max)
+        ax.set_ylim(axis_min, axis_max)
+        ax.set_zlim(axis_min, axis_max)
+        ax.set_xlabel("x [AU]")
+        ax.set_ylabel("y [AU]")
+        ax.set_zlabel("z [AU]")
+        ax.view_init(elev=22.0, azim=45.0)
+        try:
+            ax.set_box_aspect((1, 1, 1))
+        except Exception:
+            pass
+
+    line_sets = []
+    marker_sets = []
+    for ax in axes:
+        model_lines = []
+        model_markers = []
+        for size, idx in zip(sizes, visible_indices):
+            color = BODIES[idx].color
+            edge = "black" if idx in (VOYAGER_IDX, SL9_IDX) else color
+            marker_size = max(2.0, float(size) * 0.80)
+            (line,) = ax.plot([], [], [], color=color, linewidth=1.2, alpha=0.80)
+            (marker,) = ax.plot(
+                [], [], [], marker="o", linestyle="None", color=color,
+                markersize=marker_size, markeredgecolor=edge, markeredgewidth=0.7,
+            )
+            model_lines.append(line)
+            model_markers.append(marker)
+        line_sets.append(model_lines)
+        marker_sets.append(model_markers)
+
+    time_text = fig.text(0.5, 0.965, "", ha="center", va="top", fontsize=12)
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+
+    def update(k: int):
+        fidx = int(selected[k])
+        sl = trail_slice(fidx, trail_frames)
+        for model_index, frames in enumerate((frames_n, frames_p)):
+            for local_i, idx in enumerate(visible_indices):
+                xyz = frames[sl, idx, :]
+                line_sets[model_index][local_i].set_data_3d(xyz[:, 0], xyz[:, 1], xyz[:, 2])
+                pnt = frames[fidx, idx, :]
+                marker_sets[model_index][local_i].set_data_3d([pnt[0]], [pnt[1]], [pnt[2]])
+        time_text.set_text(f"{main_title}: {time_label} = {times[fidx]:.2f} yr")
+        return [artist for subset in (line_sets + marker_sets) for artist in subset] + [time_text]
+
+    anim = FuncAnimation(fig, update, frames=len(selected), interval=1000.0 / gif_fps, blit=False)
+    with tempfile.NamedTemporaryFile(suffix=".gif", delete=True) as tmp:
+        writer = PillowWriter(fps=gif_fps)
+        anim.save(tmp.name, writer=writer)
+        tmp.seek(0)
+        data = tmp.read()
+    plt.close(fig)
+    return data
+
 # =============================================================================
 # Streamlit UI
 # =============================================================================
@@ -1403,6 +1509,61 @@ st.plotly_chart(
     config={"responsive": True, "scrollZoom": True},
 )
 st.caption(tr(LANG, "axes_caption"))
+
+st.subheader("Export and downloads" if LANG == "en" else "Export a stažení")
+export_help = (
+    "Generate a downloadable animated GIF from the currently computed simulation. "
+    "GIF export is rendered on the server and may take some time; use a modest number of frames first."
+    if LANG == "en" else
+    "Vygeneruje stažitelný animovaný GIF z aktuálně spočtené simulace. "
+    "Export GIFu se renderuje na serveru a může chvíli trvat; nejdříve použijte menší počet snímků."
+)
+st.caption(export_help)
+exp_col1, exp_col2, exp_col3 = st.columns([1, 1, 2])
+with exp_col1:
+    gif_frames = st.slider(
+        "Animated GIF frames" if LANG == "en" else "Počet snímků GIFu",
+        min_value=20,
+        max_value=180,
+        value=80,
+        step=10,
+    )
+with exp_col2:
+    gif_fps = st.slider(
+        "GIF frame rate [fps]" if LANG == "en" else "Snímková frekvence GIFu [fps]",
+        min_value=5,
+        max_value=30,
+        value=15,
+        step=1,
+    )
+with exp_col3:
+    st.write("" if LANG == "en" else "")
+    make_gif = st.button(
+        "Generate downloadable GIF video" if LANG == "en" else "Vygenerovat stažitelný GIF",
+        use_container_width=True,
+    )
+
+if make_gif:
+    with st.spinner("Rendering GIF..." if LANG == "en" else "Renderuji GIF..."):
+        gif_bytes = render_solar_system_gif(
+            times=times,
+            frames_n=frames_n,
+            frames_p=frames_p,
+            visible_indices=visible_indices,
+            sizes=sizes,
+            fixed_axis_range=fixed_axis_range,
+            trail_frames=trail_frames,
+            gif_frame_count=int(gif_frames),
+            gif_fps=int(gif_fps),
+            lang=LANG,
+        )
+    st.download_button(
+        "Download GIF video" if LANG == "en" else "Stáhnout GIF video",
+        data=gif_bytes,
+        file_name="solar_system_newton_1pn.gif",
+        mime="image/gif",
+        use_container_width=True,
+    )
 
 col1, col2, col3, col4 = st.columns(4)
 with col1:
