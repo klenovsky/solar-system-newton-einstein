@@ -1167,10 +1167,13 @@ def render_solar_system_gif(
 
     line_sets = []
     marker_sets = []
+    label_sets = []
+    body_labels = [body_display_name(BODIES[idx], lang) for idx in visible_indices]
     for ax in axes:
         model_lines = []
         model_markers = []
-        for size, idx in zip(sizes, visible_indices):
+        model_labels = []
+        for label, size, idx in zip(body_labels, sizes, visible_indices):
             color = BODIES[idx].color
             edge = "black" if idx in (VOYAGER_IDX, SL9_IDX) else color
             marker_size = max(2.0, float(size) * 0.80)
@@ -1179,10 +1182,17 @@ def render_solar_system_gif(
                 [], [], [], marker="o", linestyle="None", color=color,
                 markersize=marker_size, markeredgecolor=edge, markeredgewidth=0.7,
             )
+            # Matplotlib's GIF export is separate from the interactive Plotly chart.
+            # The Plotly chart already shows body names via markers+text, but GIF
+            # frames need explicit 3D text artists.  A tiny screen-space-like
+            # offset keeps labels from sitting exactly on top of the markers.
+            text = ax.text(0.0, 0.0, 0.0, label, fontsize=7, color="black", ha="left", va="bottom")
             model_lines.append(line)
             model_markers.append(marker)
+            model_labels.append(text)
         line_sets.append(model_lines)
         marker_sets.append(model_markers)
+        label_sets.append(model_labels)
 
     time_text = fig.text(0.5, 0.965, "", ha="center", va="top", fontsize=12)
     fig.tight_layout(rect=(0, 0, 1, 0.94))
@@ -1205,8 +1215,20 @@ def render_solar_system_gif(
                 line_sets[model_index][local_i].set_data_3d(xyz[:, 0], xyz[:, 1], xyz[:, 2])
                 pnt = frames[fidx, idx, :]
                 marker_sets[model_index][local_i].set_data_3d([pnt[0]], [pnt[1]], [pnt[2]])
+
+                # Update the 3D label position.  The offset is proportional to
+                # the current axis half-width so labels remain readable in the
+                # fixed, fitted and dynamic view-box modes.
+                axis_min_now, axis_max_now = ax_n.get_xlim3d() if model_index == 0 else ax_p.get_xlim3d()
+                label_offset = 0.012 * max(abs(axis_min_now), abs(axis_max_now), 1.0)
+                label = label_sets[model_index][local_i]
+                label.set_position((pnt[0] + label_offset, pnt[1] + label_offset))
+                label.set_3d_properties(pnt[2] + label_offset, zdir="z")
         time_text.set_text(f"{main_title}: {time_label} = {times[fidx]:.2f} yr")
-        return [artist for subset in (line_sets + marker_sets) for artist in subset] + [time_text]
+        artists = []
+        for subset in (line_sets + marker_sets + label_sets):
+            artists.extend(subset)
+        return artists + [time_text]
 
     anim = FuncAnimation(fig, update, frames=len(selected), interval=1000.0 / gif_fps, blit=False)
     with tempfile.NamedTemporaryFile(suffix=".gif", delete=True) as tmp:
@@ -1229,8 +1251,8 @@ st.sidebar.selectbox("Language / Jazyk", LANGUAGE_OPTIONS, key="language")
 LANG = lang_code()
 
 st.title(tr(LANG, "title"))
-st.caption("Build: axis-scaling + GIF export + Apply v3")
-st.sidebar.caption("Build: axis-scaling + GIF export + Apply v3")
+st.caption("Build: axis-scaling + GIF export + Apply v4 (GIF labels)")
+st.sidebar.caption("Build: axis-scaling + GIF export + Apply v4 (GIF labels)")
 
 st.sidebar.header(tr(LANG, "presets"))
 if st.sidebar.button(tr(LANG, "reset_initial"), use_container_width=True, on_click=request_reset_to_initial_values):

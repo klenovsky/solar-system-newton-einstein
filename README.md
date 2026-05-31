@@ -44,7 +44,7 @@ Choose `English` or `Čeština`. English is the default and `Reset to initial va
 This version includes an `Export and downloads` section below the main Plotly figure.
 It can render the currently computed simulation into a downloadable animated GIF.
 The GIF is generated server-side with Matplotlib and Pillow, so rendering can take some time on Streamlit Community Cloud.
-Start with a moderate number of frames, for example 60--80.
+Start with a moderate number of frames, for example 60--80. The exported GIF now includes body labels, so planet names and optional-object names are visible in the downloaded animation.
 
 ## View-box scaling
 
@@ -59,7 +59,7 @@ The same mode is used for the interactive Plotly plot and for the downloadable G
 
 ## Build marker
 
-This version displays `Build: axis-scaling + GIF export + Apply v3` in the app and sidebar. If you do not see this text after deployment, Streamlit is still serving an older app.py or another entrypoint file.
+This version displays `Build: axis-scaling + GIF export + Apply v4 (GIF labels)` in the app and sidebar. If you do not see this text after deployment, Streamlit is still serving an older app.py or another entrypoint file.
 
 
 ## Apply and recompute
