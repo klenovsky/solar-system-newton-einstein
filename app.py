@@ -582,8 +582,16 @@ def axis_template_from_range(axis_range: tuple[float, float], dynamic: bool = Fa
 
 
 def trail_slice(frame: int, trail_frames: int) -> slice:
-    start = max(0, frame - max(int(trail_frames), 1) + 1)
-    return slice(start, frame + 1)
+    """Return only the already travelled part of a trajectory.
+
+    The complete trajectory is precomputed after pressing Apply and recompute,
+    but plotting uses this slice so the visible path grows behind the moving
+    body.  No future part of the orbit is drawn ahead of the current time.
+    ``trail_frames`` is a maximum trail length in stored/displayed frames.
+    """
+    fidx = max(int(frame), 0)
+    start = max(0, fidx - max(int(trail_frames), 1) + 1)
+    return slice(start, fidx + 1)
 
 
 
@@ -684,6 +692,7 @@ UI_TEXT = {
         "need_autorefresh": "Live playback requires the optional package streamlit-autorefresh. Install it or use the Plotly Play button in the chart.",
         "displayed_frame": "Displayed time frame",
         "axes_caption": "View-box mode: {mode}. In the fixed mode, the 3D axis range is set by the selected planet region and is not enlarged by Voyager/comet motion. In the full-trajectory and dynamic modes, the box may include the optional bodies. Use Plotly zoom/pan/rotate controls for manual viewing.",
+        "progressive_caption": "The trajectories are precomputed after Apply and recompute, but the plotted trails are progressive: only the already travelled path up to the current time is drawn. Future orbit segments are not shown ahead of the moving bodies.",
         "displayed_time": "Displayed time",
         "sun_mass_scale": "Sun mass scale",
         "onepn_multiplier": "1PN multiplier",
@@ -1251,8 +1260,8 @@ st.sidebar.selectbox("Language / Jazyk", LANGUAGE_OPTIONS, key="language")
 LANG = lang_code()
 
 st.title(tr(LANG, "title"))
-st.caption("Build: axis-scaling + GIF export + Apply v4 (GIF labels)")
-st.sidebar.caption("Build: axis-scaling + GIF export + Apply v4 (GIF labels)")
+st.caption("Build: axis-scaling + GIF export + Apply v5 (progressive trails)")
+st.sidebar.caption("Build: axis-scaling + GIF export + Apply v5 (progressive trails)")
 
 st.sidebar.header(tr(LANG, "presets"))
 if st.sidebar.button(tr(LANG, "reset_initial"), use_container_width=True, on_click=request_reset_to_initial_values):
@@ -1460,6 +1469,7 @@ Pokud jsou tato čísla příliš velká, animace může být stále zajímavá,
 8. Poté použijte **Spustit**, **Pauza** a **Reset** pro živé přehrávání. Alternativně lze použít také tlačítko Play přímo v Plotly grafu.
 9. Graf lze ručně otáčet, přibližovat a posouvat. V pevném režimu se ruční zoom během přehrávání nemá přepisovat automatickým škálováním os.
 10. V části **Export a stažení** lze vytvořit animovaný GIF aktuálně spočteného průběhu. Větší počet snímků dává hladší video, ale generování je pomalejší.
+11. Trajektorie se kvůli efektivitě předpočítají, ale viditelné stopy se kreslí progresivně: v čase \(t\) graf ukazuje jen dráhu proletěnou do tohoto času, nikoli budoucí část orbity.
 
 ### Reference
 
@@ -1490,6 +1500,7 @@ If these numbers become too large, the animation can still be interesting, but i
 8. Then use **Start**, **Pause**, and **Reset** for live playback. Alternatively, use the Plotly Play button inside the chart.
 9. The 3D chart can be manually rotated, zoomed, and panned. In fixed view-box mode, the manual zoom should not be overwritten by automatic axis rescaling during playback.
 10. In **Export and downloads**, generate an animated GIF of the currently computed simulation. More GIF frames give a smoother video, but rendering takes longer.
+11. The trajectories are precomputed for numerical efficiency, but the visible trails are drawn progressively: at time \(t\) the plot shows only the path already travelled up to that time, not the future orbit.
 
 ### References
 
@@ -1692,6 +1703,7 @@ st.plotly_chart(
     config={"responsive": True, "scrollZoom": True},
 )
 st.caption(tr(LANG, "axes_caption", mode=axis_mode_label(axis_scaling_mode, LANG)))
+st.caption(tr(LANG, "progressive_caption"))
 
 st.subheader("Export and downloads" if LANG == "en" else "Export a stažení")
 export_help = (

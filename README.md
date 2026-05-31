@@ -65,3 +65,8 @@ This version displays `Build: axis-scaling + GIF export + Apply v4 (GIF labels)`
 ## Apply and recompute
 
 The sidebar controls are grouped in a form. Parameter changes are applied only after pressing `Apply and recompute`, which prevents expensive trajectory recalculation after every slider movement.
+
+
+## Progressive trajectory drawing
+
+After pressing `Apply and recompute`, the full numerical trajectory is computed and cached, but the visible curves are drawn progressively. At each displayed time, only the already travelled part of the trajectory is shown behind the moving body; future orbit segments are not drawn ahead of the planets or optional objects.
