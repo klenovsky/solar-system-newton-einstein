@@ -216,21 +216,29 @@ def build_initial_conditions(
 
 
 def acceleration_newton(pos: np.ndarray, masses: np.ndarray, active_mask: np.ndarray | None = None) -> np.ndarray:
-    """Newtonian N-body acceleration with a tiny numerical softening."""
+    """Newtonian N-body acceleration with a tiny numerical softening.
+
+    This vectorized implementation is numerically equivalent to the explicit
+    double loop for the point-mass model used here, but it is noticeably faster
+    on Streamlit Cloud when many RK4 steps are requested.
+    """
     n = len(masses)
     acc = np.zeros_like(pos)
     if active_mask is None:
         active_mask = np.ones(n, dtype=bool)
-    for i in range(n):
-        if not bool(active_mask[i]):
-            continue
-        for j in range(n):
-            if i == j or not bool(active_mask[j]) or masses[j] <= 0.0:
-                continue
-            dr = pos[i] - pos[j]
-            r2 = float(np.dot(dr, dr)) + SOFTENING_AU * SOFTENING_AU
-            inv_r3 = 1.0 / (r2 * math.sqrt(r2))
-            acc[i] += -G_MODEL * masses[j] * dr * inv_r3
+
+    active_idx = np.where(active_mask & (masses > 0.0))[0]
+    if active_idx.size <= 1:
+        return acc
+
+    p = pos[active_idx]
+    m = masses[active_idx]
+    dr = p[:, None, :] - p[None, :, :]
+    r2 = np.einsum("ijk,ijk->ij", dr, dr) + SOFTENING_AU * SOFTENING_AU
+    np.fill_diagonal(r2, np.inf)
+    inv_r3 = 1.0 / (r2 * np.sqrt(r2))
+    acc_active = -G_MODEL * np.sum(dr * inv_r3[:, :, None] * m[None, :, None], axis=1)
+    acc[active_idx] = acc_active
     return acc
 
 
@@ -1260,8 +1268,8 @@ st.sidebar.selectbox("Language / Jazyk", LANGUAGE_OPTIONS, key="language")
 LANG = lang_code()
 
 st.title(tr(LANG, "title"))
-st.caption("Build: axis-scaling + GIF export + Apply v5 (progressive trails)")
-st.sidebar.caption("Build: axis-scaling + GIF export + Apply v5 (progressive trails)")
+st.caption("Build: v6 fast tuning (progressive trails + visual-only controls)")
+st.sidebar.caption("Build: v6 fast tuning (progressive trails + visual-only controls)")
 
 st.sidebar.header(tr(LANG, "presets"))
 if st.sidebar.button(tr(LANG, "reset_initial"), use_container_width=True, on_click=request_reset_to_initial_values):
@@ -1543,11 +1551,6 @@ with st.sidebar.form("solar_controls_form"):
     pn_log10 = st.slider("log10(1PN multiplier)" if LANG == "en" else "log10(násobku 1PN)", min_value=-3.0, max_value=6.0, step=0.1, key="pn_log10")
     st.caption(tr(LANG, "pn_caption", val=10.0 ** pn_log10))
 
-    st.header(tr(LANG, "display_sizes"))
-    size_gamma = st.slider(tr(LANG, "gamma"), 0.05, 0.80, step=0.05, key="size_gamma")
-    sun_marker = st.slider(tr(LANG, "sun_marker"), 2.0, 20.0, step=0.5, key="sun_marker")
-    planet_min = st.slider(tr(LANG, "planet_min"), 3.0, 14.0, step=0.5, key="planet_min")
-    planet_max = st.slider(tr(LANG, "planet_max"), 5.0, 25.0, step=0.5, key="planet_max")
 
     st.header(tr(LANG, "mass_scaling"))
     sun_mass_log10 = st.slider(tr(LANG, "sun_mass"), -3.0, 3.0, step=0.1, key="sun_mass_log10")
@@ -1590,6 +1593,15 @@ with st.sidebar.form("solar_controls_form"):
     max_animation_frames = st.slider(tr(LANG, "max_plotly"), 20, 250, step=10, key="max_animation_frames")
     apply_submitted = st.form_submit_button(tr(LANG, "apply_recompute"), use_container_width=True)
 
+# Visual-only controls are intentionally outside the Apply/recompute form.
+# Changing marker diameters should not trigger a new numerical integration.
+st.sidebar.header(tr(LANG, "display_sizes"))
+st.sidebar.caption("Visual only: these controls redraw the figure but do not recompute trajectories." if LANG == "en" else "Pouze vzhled: tyto volby překreslí obrázek, ale nepřepočítávají trajektorie.")
+size_gamma = st.sidebar.slider(tr(LANG, "gamma"), 0.05, 0.80, step=0.05, key="size_gamma")
+sun_marker = st.sidebar.slider(tr(LANG, "sun_marker"), 2.0, 20.0, step=0.5, key="sun_marker")
+planet_min = st.sidebar.slider(tr(LANG, "planet_min"), 3.0, 14.0, step=0.5, key="planet_min")
+planet_max = st.sidebar.slider(tr(LANG, "planet_max"), 5.0, 25.0, step=0.5, key="planet_max")
+
 if apply_submitted:
     st.session_state.live_frame = 0
     st.session_state.running = False
@@ -1624,7 +1636,7 @@ visible_indices = visible_body_indices(view, bool(include_voyager), bool(include
 
 parameter_signature = repr((
     view, total_years, dt_days, frame_stride, trail_frames, axis_scaling_mode,
-    log10_c, pn_log10, size_gamma, sun_marker, planet_min, planet_max,
+    log10_c, pn_log10,
     sun_mass_log10, tuple(planet_mass_log10), tuple(planet_distance_scale),
     include_voyager, voyager_mass_log10kg, voyager_vx, voyager_vy, voyager_vz,
     include_sl9, sl9_mass_log10kg, sl9_vx, sl9_vy, sl9_vz,

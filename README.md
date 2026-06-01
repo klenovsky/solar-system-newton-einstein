@@ -70,3 +70,10 @@ The sidebar controls are grouped in a form. Parameter changes are applied only a
 ## Progressive trajectory drawing
 
 After pressing `Apply and recompute`, the full numerical trajectory is computed and cached, but the visible curves are drawn progressively. At each displayed time, only the already travelled part of the trajectory is shown behind the moving body; future orbit segments are not drawn ahead of the planets or optional objects.
+
+
+## v6 fast-tuning update
+
+This version keeps the display-size controls outside the recompute form. Changing marker sizes, including the apparent size of Jupiter or the Sun, redraws the figure but does not rerun the numerical integrator. Physical changes such as masses, distances, time step, total time, optional objects, `c`, and the 1PN multiplier still require `Apply and recompute`.
+
+The Newtonian acceleration calculation was also vectorized with NumPy to reduce server-side integration time on Streamlit Cloud.
