@@ -1088,14 +1088,23 @@ def ensure_default_session_state() -> None:
 
 
 def reset_to_initial_values() -> None:
-    """Reset all visible controls and playback state to their default values.
+    """Reset controls and playback state while preserving the selected language.
 
     This function must be called before keyed widgets are instantiated in the
     current Streamlit run. Streamlit raises StreamlitAPIException if the value
     of an already-created widget is modified through st.session_state.
+
+    The language selector is intentionally preserved, so a user working in Czech
+    remains in Czech after pressing "Reset to initial values" /
+    "Obnovit výchozí hodnoty". All physical, visual, and playback controls are
+    reset to their defaults.
     """
+    current_language = st.session_state.get("language", DEFAULT_UI_VALUES["language"])
     for key, value in DEFAULT_UI_VALUES.items():
+        if key == "language":
+            continue
         st.session_state[key] = value
+    st.session_state["language"] = current_language
     st.session_state["live_frame"] = 0
     st.session_state["running"] = False
     st.session_state.pop("last_parameter_signature", None)
@@ -1268,8 +1277,8 @@ st.sidebar.selectbox("Language / Jazyk", LANGUAGE_OPTIONS, key="language")
 LANG = lang_code()
 
 st.title(tr(LANG, "title"))
-st.caption("Build: v6 fast tuning (progressive trails + visual-only controls)")
-st.sidebar.caption("Build: v6 fast tuning (progressive trails + visual-only controls)")
+st.caption("Build: v7 reset preserves language")
+st.sidebar.caption("Build: v7 reset preserves language")
 
 st.sidebar.header(tr(LANG, "presets"))
 if st.sidebar.button(tr(LANG, "reset_initial"), use_container_width=True, on_click=request_reset_to_initial_values):
